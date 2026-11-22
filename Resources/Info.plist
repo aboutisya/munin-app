@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.mnemosyne.app</string>
+	<key>CFBundleName</key>
+	<string>Мунин</string>
+	<key>CFBundleDisplayName</key>
+	<string>Мунин</string>
+	<key>CFBundleExecutable</key>
+	<string>Mnemosyne</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Мунин записывает ваш голос на встречах в отдельную дорожку «Я». Запись хранится только на этом Mac.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Мунин берёт из календаря название встречи, время и участников, чтобы подписать запись. Календарь не изменяется.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Мунин записывает голоса собеседников из Zoom, браузера и других приложений. Экран не записывается, запись хранится только на этом Mac.</string>
+</dict>
+</plist>
