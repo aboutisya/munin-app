@@ -12,6 +12,7 @@ struct MeetingView: View {
     @State private var titleDraft = ""
     @State private var rebindOpen = false
     @State private var copied = false
+    @State private var copiedSummary = false
     @Namespace private var tabLine
 
     var body: some View {
@@ -42,6 +43,17 @@ struct MeetingView: View {
     private var topBar: some View {
         HStack(spacing: 8) {
             Spacer()
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { copySummary() }
+            } label: {
+                Label(copiedSummary ? "Скопировано" : "Копировать саммари", systemImage: copiedSummary ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(Pill())
+            .disabled(detail.analysis == nil || detail.transcript == nil)
+            .opacity(detail.analysis == nil ? 0.35 : 1)
+            .help(detail.analysis == nil ? "Саммари появится после анализа" : "Скопировать саммари в markdown (⌘⌥C)")
+            .keyboardShortcut("c", modifiers: [.command, .option])
+
             Button {
                 withAnimation(.easeOut(duration: 0.15)) { copyPublic() }
             } label: {
@@ -201,6 +213,7 @@ struct MeetingView: View {
     @ViewBuilder private func content(proxy: ScrollViewProxy) -> some View {
         switch library.tab {
         case .summary: SummaryTab(library: library, detail: detail)
+        case .notes: NotesTab(detail: detail)
         case .publicText: PublicTab(library: library, detail: detail, copied: $copied, copy: copyPublic)
         case .transcript: TranscriptTab(library: library, detail: detail, proxy: proxy)
         case .diagrams: DiagramsTab(detail: detail)
@@ -243,6 +256,16 @@ struct MeetingView: View {
     private func setSkip(_ skip: Bool) {
         _ = try? library.store.update(id: detail.meta.id) { $0.skipAnalysis = skip }
         library.reload()
+    }
+
+    /// Саммари целиком, как на вкладке: коротко, решения, задачи, темы, инсайты, участники.
+    private func copySummary() {
+        guard let a = detail.analysis, let t = detail.transcript else { return }
+        let text = PersonalSummary.render(a, meta: detail.meta, transcript: t, forCopy: true)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copiedSummary = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedSummary = false }
     }
 
     private func copyPublic() {

@@ -73,7 +73,7 @@ make icon      # пересобрать иконку из Sources/Mnemosyne/Rave
 make demo      # демо-встреча со всеми вкладками в ~/Meetings
 ```
 
-Xcode не нужен, хватает Command Line Tools (Swift 6.1). Техническое решение и заметки по этапам — [docs/tech-design.md](docs/tech-design.md).
+Xcode не нужен, хватает Command Line Tools (Swift 6.1). Техническое решение и заметки по этапам — [docs/munin-tech-design.md](docs/munin-tech-design.md).
 
 Модули:
 

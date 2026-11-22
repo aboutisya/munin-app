@@ -46,8 +46,17 @@ struct Sidebar: View {
             HStack(spacing: 8) {
                 BrandMark(size: 20)
                 Text("Мунин").font(.system(size: 15, weight: .semibold)).tracking(-0.2)
+                Spacer()
+                Button { library.controller.showSettings() } label: {
+                    Image(systemName: "gearshape").font(.system(size: 14)).foregroundStyle(Theme.sec)
+                        .frame(width: 26, height: 26).contentShape(Rectangle())
+                        .hoverHighlight(radius: 6)
+                }
+                .buttonStyle(.plain)
+                .help("Настройки (⌘,)")
+                .accessibilityLabel("Настройки")
             }
-            .padding(.horizontal, 10).padding(.bottom, 14)
+            .padding(.leading, 10).padding(.trailing, 4).padding(.bottom, 14)
             nav("Встречи", .meetings, count: nil)
             nav("Задачи", .tasks, count: library.myOpenTasks)
 

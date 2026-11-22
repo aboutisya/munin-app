@@ -45,6 +45,7 @@ final class SettingsModel {
     var myName: String { didSet { settings.myName = myName } }
     var myRole: String { didSet { settings.myRole = myRole } }
     var messenger: PublicInput.Messenger { didSet { settings.messenger = messenger } }
+    var theme: AppTheme { didSet { settings.theme = theme } }
     var language: String { didSet { settings.language = language } }
     var vocabulary: String { didSet { settings.vocabularyText = vocabulary } }
     var model: String { didSet { settings.claudeModel = model } }
@@ -75,6 +76,7 @@ final class SettingsModel {
         myName = s.myName
         myRole = s.myRole
         messenger = s.messenger
+        theme = s.theme
         language = s.language
         vocabulary = s.vocabularyText
         model = s.claudeModel
@@ -153,6 +155,10 @@ struct SettingsView: View {
             Section("Общие") {
                 TextField("Как вас зовут", text: $model.myName)
                 TextField("Чем занимаетесь", text: $model.myRole, prompt: Text("например, продакт-менеджер платформы платежей"))
+                Picker("Тема", selection: $model.theme) {
+                    ForEach(AppTheme.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
                 Picker("Напомнить остановить запись", selection: $model.endReminder) {
                     Text("Не напоминать").tag(0)
                     ForEach([5, 10, 15, 30], id: \.self) { Text("через \($0) мин после конца события").tag($0) }

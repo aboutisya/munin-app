@@ -2,9 +2,13 @@ import Foundation
 
 /// `summary_personal.md` из `analysis.json` — без отдельного вызова Claude.
 public enum PersonalSummary {
-    public static func render(_ a: Analysis, meta: MeetingMeta, transcript t: Transcript, calendar: Calendar = .current) -> String {
+    /// `forCopy` — для буфера обмена: то, что видно на вкладке «Саммари», без таймкодов,
+    /// диаграмм, тональности и разбора конфликта.
+    public static func render(_ a: Analysis, meta: MeetingMeta, transcript t: Transcript, calendar: Calendar = .current,
+                              forCopy: Bool = false) -> String {
         let names = speakerNames(a, transcript: t)
         func name(_ code: String) -> String { names[code] ?? code }
+        func ts(_ s: String) -> String { forCopy || s.isEmpty ? "" : " `\(s)`" }
 
         let df = DateFormatter()
         df.locale = Locale(identifier: "ru_RU")
@@ -26,7 +30,7 @@ public enum PersonalSummary {
         if !a.decisions.isEmpty {
             out.append("## Решения")
             out += a.decisions.map { d in
-                "- \(d.text)" + (d.owner.isEmpty ? "" : " — \(name(d.owner))") + " `\(d.ts)`"
+                "- \(d.text)" + (d.owner.isEmpty ? "" : " — \(name(d.owner))") + ts(d.ts)
             }
             out.append("")
         }
@@ -37,23 +41,23 @@ public enum PersonalSummary {
                 var s = who.isEmpty ? "- [ ] \(i.what) — исполнитель не назван" : "- [ ] **\(name(who))**: \(i.what)"
                 if !i.due.isEmpty { s += " — до \(formatDue(i.due, calendar: calendar))" }
                 if !i.dueSaid.isEmpty { s += " (\(i.dueSaid))" }
-                return s + " `\(i.ts)`"
+                return s + ts(i.ts)
             }
             out.append("")
         }
         if !a.summaryByTopics.isEmpty {
             out.append("## По темам")
             for topic in a.summaryByTopics {
-                out += ["", "### \(topic.topic) `\(topic.start)`", "", topic.markdown]
+                out += ["", "### \(topic.topic)\(ts(topic.start))", "", topic.markdown]
             }
             out.append("")
         }
         if !a.insights.isEmpty {
             out.append("## Инсайты")
-            out += a.insights.map { "- \($0.text) `\($0.ts)`" }
+            out += a.insights.map { "- \($0.text)\(ts($0.ts))" }
             out.append("")
         }
-        if !a.diagrams.isEmpty {
+        if !forCopy, !a.diagrams.isEmpty {
             out.append("## Диаграммы")
             for d in a.diagrams {
                 out += ["", "### \(d.title)", "", "```mermaid", d.mermaid, "```"]
@@ -61,6 +65,7 @@ public enum PersonalSummary {
             out.append("")
         }
 
+        if !forCopy {
         out.append("## Тональность")
         let s = a.sentiment.overall
         out.append("**\(s.label.capitalizedFirst)** (\(String(format: "%+.1f", s.score)))")
@@ -84,6 +89,7 @@ public enum PersonalSummary {
                 }
                 out.append("")
             }
+        }
         }
 
         out.append("## Участники")

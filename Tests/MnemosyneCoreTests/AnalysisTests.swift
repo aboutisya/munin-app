@@ -147,6 +147,20 @@ struct AnalysisTests {
         b.decisions = [.init(text: "Релиз в четверг", ts: "00:12:40", owner: "С1")]
         #expect(PersonalSummary.render(b, meta: meta, transcript: transcript(), calendar: cal).contains("Релиз в четверг — Мария Смирнова"))
     }
+
+    /// «Копировать саммари»: то же, что на вкладке, без таймкодов и личного разбора.
+    @Test func summaryForCopy() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Moscow")!
+        let md = PersonalSummary.render(sample, meta: meta, transcript: transcript(), calendar: cal, forCopy: true)
+        #expect(md.contains("## Коротко\n- Релиз не переносим"))
+        #expect(md.contains("- [ ] **Мария Смирнова**: Подготовить сборку — до 26 ноября, чт (к четвергу)\n"))
+        #expect(md.contains("## Участники"))
+        #expect(!md.contains("`"))
+        #expect(!md.contains("## Тональность"))
+        #expect(!md.contains("Фидбек по моей речи"))
+        #expect(!md.contains("## Диаграммы"))
+    }
 }
 
 struct AnalysisQueueTests {

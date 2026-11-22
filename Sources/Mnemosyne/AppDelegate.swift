@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         handleTerminationSignals()
+        settings.theme.apply()
         let recorder = Recorder()
         recorder.preferredMicUID = settings.micUID
         recorder.echoCancellationEnabled = settings.echoCancellation
@@ -332,8 +333,35 @@ final class AppSettings {
         set { defaults.set(newValue, forKey: "deleteOldAudio") }
     }
 
+    /// Тема интерфейса: как в системе, светлая или тёмная.
+    var theme: AppTheme {
+        get { defaults.string(forKey: "theme").flatMap(AppTheme.init) ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: "theme"); newValue.apply() }
+    }
+
     var onboardingDone: Bool {
         get { defaults.bool(forKey: "onboardingDone") }
         set { defaults.set(newValue, forKey: "onboardingDone") }
+    }
+}
+
+/// Тема приложения. Меняет `NSApp.appearance`: цвета `Theme` и поповер подстраиваются сами.
+enum AppTheme: String, CaseIterable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: "Как в системе"
+        case .light: "Светлая"
+        case .dark: "Тёмная"
+        }
+    }
+
+    @MainActor func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 }

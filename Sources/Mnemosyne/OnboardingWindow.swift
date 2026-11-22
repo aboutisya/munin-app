@@ -146,14 +146,21 @@ struct OnboardingView: View {
     @Bindable var model: OnboardingModel
     let done: () -> Void
 
-    private let pages = 3
+    /// Знакомство (приветствие + 4 возможности), затем три шага настройки.
+    static let tourPages = 5
+    private let pages = tourPages + 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
                 switch model.page {
-                case 0: about
-                case 1: access
+                case 0: TourWelcome()
+                case 1: TourRecord()
+                case 2: TourTranscript()
+                case 3: TourAnalysis()
+                case 4: TourShare(messenger: model.messenger.title)
+                case Self.tourPages: about
+                case Self.tourPages + 1: access
                 default: voice
                 }
             }
@@ -178,11 +185,11 @@ struct OnboardingView: View {
     /// 1. Кто вы и куда сохранять.
     private var about: some View {
         VStack(alignment: .leading, spacing: 22) {
-            HStack(spacing: 14) {
-                BrandMark(size: 44)
-                Text("Мунин").font(.system(size: 30, weight: .bold)).tracking(-0.6)
+            HStack(spacing: 12) {
+                BrandMark(size: 30)
+                Text("Настроим за три шага").font(.system(size: 24, weight: .bold)).tracking(-0.4)
             }
-            Text("Записывает встречи, расшифровывает их на этом Mac и готовит саммари через Claude Code по вашей подписке. Три коротких шага — и можно записывать.")
+            Text("Расскажите о себе, дайте доступы и запишите голос — и можно записывать.")
                 .font(.system(size: 15)).foregroundStyle(Theme.sec).fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 10) {
@@ -262,10 +269,18 @@ struct OnboardingView: View {
                 ForEach(0..<pages, id: \.self) { i in
                     Capsule().fill(i == model.page ? Theme.ink : Theme.line)
                         .frame(width: i == model.page ? 18 : 6, height: 6)
+                        // Зазор между знакомством и настройкой.
+                        .padding(.leading, i == Self.tourPages ? 8 : 0)
                 }
             }
             .animation(.easeOut(duration: 0.2), value: model.page)
             Spacer()
+            if model.page < Self.tourPages {
+                LinkButton("Пропустить знакомство") {
+                    withAnimation(.easeInOut(duration: 0.25)) { model.page = Self.tourPages }
+                }
+                .padding(.trailing, 6)
+            }
             if model.page > 0 {
                 Button("Назад") { go(-1) }.buttonStyle(Pill())
             }

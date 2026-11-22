@@ -15,7 +15,7 @@ final class LibraryModel {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case summary = "Саммари", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек"
+        case summary = "Саммари", notes = "Мои заметки", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек"
         var id: String { rawValue }
     }
 
