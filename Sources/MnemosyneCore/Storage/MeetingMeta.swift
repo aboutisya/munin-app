@@ -132,6 +132,8 @@ public struct MeetingMeta: Codable, Equatable, Sendable {
     public var audioDeletedAt: Date?
     /// Расход по вызовам Claude — для статистики в настройках.
     public var usage: [UsageRecord]?
+    /// Теги встречи: id из `TagDirectory`.
+    public var tags: [UUID]?
 
     public init(id: UUID = UUID(), title: String, startedAt: Date, mode: RecordingMode) {
         self.id = id

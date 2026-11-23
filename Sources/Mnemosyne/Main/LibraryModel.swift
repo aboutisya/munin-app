@@ -15,7 +15,7 @@ final class LibraryModel {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case summary = "Саммари", notes = "Мои заметки", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек"
+        case summary = "Саммари", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек", notes = "Мои заметки"
         var id: String { rawValue }
     }
 
@@ -29,6 +29,10 @@ final class LibraryModel {
     var selectedId: UUID? { didSet { if oldValue != selectedId { loadDetail() } } }
     var tab: Tab = .summary
     private(set) var detail: MeetingDetail?
+    /// Справочник тегов; перечитывается вместе со списком, чтобы правки из настроек появлялись сами.
+    private(set) var tagDirectory = TagDirectory(tags: [])
+    /// Фильтр списка по тегам: встреча показывается, если у неё есть все выбранные.
+    var tagFilter: Set<UUID> = []
 
     let controller: AppController
     let player = PlayerModel()
@@ -61,8 +65,13 @@ final class LibraryModel {
     }
 
     func reload() {
+        let dir = TagDirectory.load(root: store.root)
+        if dir != tagDirectory {
+            tagDirectory = dir
+            tagFilter.formIntersection(dir.tags.map(\.id))
+        }
         let list = store.list().map { Item(folder: $0.folder, meta: $0.meta) }
-        let signature = list.map { "\($0.meta.id)\($0.meta.title)\($0.meta.status.rawValue)\($0.folder.lastPathComponent)\($0.meta.analysisHash ?? "")\($0.meta.publicHash ?? "")\($0.meta.steps?["public"]?.status.rawValue ?? "")\($0.meta.steps?["analyze"]?.status.rawValue ?? "")" }.joined()
+        let signature = list.map { "\($0.meta.tags ?? [])\($0.meta.id)\($0.meta.title)\($0.meta.status.rawValue)\($0.folder.lastPathComponent)\($0.meta.analysisHash ?? "")\($0.meta.publicHash ?? "")\($0.meta.steps?["public"]?.status.rawValue ?? "")\($0.meta.steps?["analyze"]?.status.rawValue ?? "")" }.joined()
         guard signature != lastSignature else { return }
         lastSignature = signature
         items = list
@@ -74,8 +83,8 @@ final class LibraryModel {
 
     /// Встречи, отфильтрованные поиском, сгруппированные «Сегодня / Эта неделя / Ранее».
     var groups: [(title: String, items: [Item])] {
-        let visible: [Item]
-        if let hits { visible = hits.compactMap { h in items.first { $0.id == h.id } } } else { visible = items }
+        let found = hits.map { hits in hits.compactMap { h in items.first { $0.id == h.id } } } ?? items
+        let visible = found.filter { TagDirectory.matches($0.meta.tags, selected: tagFilter) }
         if hits != nil { return [("Найдено", visible)] }
         let cal = Calendar.current
         let now = Date()
@@ -86,6 +95,18 @@ final class LibraryModel {
             else { earlier.append(item) }
         }
         return [("Сегодня", today), ("Эта неделя", week), ("Ранее", earlier)].filter { !$0.1.isEmpty }
+    }
+
+    func tags(of item: Item) -> [MeetingTag] { tagDirectory.tags(for: item.meta.tags) }
+
+    func toggleFilter(_ id: UUID) {
+        if tagFilter.contains(id) { tagFilter.remove(id) } else { tagFilter.insert(id) }
+    }
+
+    /// Поставить или снять тег у выбранной встречи.
+    func setTag(_ tag: MeetingTag, on: Bool, meeting: UUID) {
+        try? store.setTag(tag.id, on: on, meeting: meeting)
+        refresh()
     }
 
     func snippet(for id: UUID) -> String? { hits?.first { $0.id == id }?.snippet }

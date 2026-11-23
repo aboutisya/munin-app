@@ -6,10 +6,21 @@ import SwiftUI
 struct SummaryTab: View {
     let library: LibraryModel
     let detail: MeetingDetail
+    var copied = false
+    var copy: () -> Void = {}
 
     var body: some View {
         if let a = detail.analysis {
             VStack(alignment: .leading, spacing: 36) {
+                HStack(spacing: 14) {
+                    Text("Для себя: без таймкодов, тональности и фидбека. Markdown.")
+                        .font(.system(size: 13)).foregroundStyle(Theme.sec)
+                    Spacer()
+                    Button(copied ? "Скопировано" : "Скопировать саммари", action: copy)
+                        .buttonStyle(Pill(dark: true))
+                        .disabled(detail.transcript == nil)
+                }
+                .padding(.bottom, -12)
                 if !a.tldr.isEmpty {
                     section("Коротко") {
                         VStack(alignment: .leading, spacing: 8) {

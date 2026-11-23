@@ -18,7 +18,7 @@ final class AppController {
     @ObservationIgnored private lazy var settingsWindow = SettingsWindowController(controller: self)
     @ObservationIgnored private lazy var onboardingWindow = OnboardingWindowController(controller: self)
 
-    func showSettings() { settingsWindow.show() }
+    func showSettings(newTag: Bool = false, scrollToTags: Bool = false) { settingsWindow.show(newTag: newTag, scrollToTags: scrollToTags) }
     func showOnboarding() { onboardingWindow.show() }
 
     /// Пока открыто хоть одно обычное окно, приложение в Dock и ⌘Tab; закрылось последнее — снова только в строке меню.

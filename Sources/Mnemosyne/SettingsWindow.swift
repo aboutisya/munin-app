@@ -9,21 +9,31 @@ import SwiftUI
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private var model: SettingsModel?
     let controller: AppController
 
     init(controller: AppController) { self.controller = controller }
 
-    func show() {
+    func show(newTag: Bool = false, scrollToTags: Bool = false) {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             w.title = "Настройки Мунина"
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 560, height: 480)
-            w.contentView = NSHostingView(rootView: SettingsView(model: SettingsModel(controller: controller)))
+            let model = SettingsModel(controller: controller)
+            self.model = model
+            w.contentView = NSHostingView(rootView: SettingsView(model: model))
             w.center()
             w.delegate = self
             window = w
+        }
+        model?.reloadTags()
+        // Окно могло только что создаться: прокрутка сработает, когда форма уже на экране.
+        if newTag || scrollToTags {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                if newTag { self?.model?.startNewTag() } else { self?.model?.scrollToTags += 1 }
+            }
         }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
@@ -69,6 +79,17 @@ final class SettingsModel {
     var checkingClaude = false
     private(set) var people: [PeopleDirectory.Record] = []
 
+    // Теги
+    private(set) var tags: [MeetingTag] = []
+    private(set) var tagCounts: [UUID: Int] = [:]
+    var editingTag: UUID?
+    var newTagId: UUID?
+    var tagDraftName = ""
+    var tagDraftColor: TagColor = .orange
+    var confirmDeleteTag: UUID?
+    /// Прокрутить к разделу «Теги» (после «Новый тег…» из карточки).
+    var scrollToTags = 0
+
     init(controller: AppController) {
         self.controller = controller
         let s = controller.settings
@@ -86,6 +107,62 @@ final class SettingsModel {
         echo = s.echoCancellation
         launchAtLogin = SMAppService.mainApp.status == .enabled
         reloadPeople()
+        reloadTags()
+    }
+
+    private var root: URL { controller.recorder.store.root }
+
+    func reloadTags() {
+        tags = TagDirectory.load(root: root).tags
+        tagCounts = controller.recorder.store.tagCounts()
+    }
+
+    func startEditTag(_ t: MeetingTag) {
+        cancelTag()
+        editingTag = t.id
+        tagDraftName = t.name
+        tagDraftColor = t.color
+    }
+
+    func startNewTag() {
+        cancelTag()
+        // Свободный цвет, если есть, иначе оранжевый.
+        let used = Set(tags.map(\.color))
+        let t = MeetingTag(name: "", color: TagColor.allCases.first { !used.contains($0) } ?? .orange)
+        tags.append(t)
+        startEditTag(t)
+        newTagId = t.id
+        scrollToTags += 1
+    }
+
+    func saveTag() {
+        guard let id = editingTag else { return }
+        let name = tagDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        var dir = TagDirectory.load(root: root)
+        if let i = dir.tags.firstIndex(where: { $0.id == id }) {
+            dir.tags[i].name = name
+            dir.tags[i].color = tagDraftColor
+        } else {
+            dir.tags.append(MeetingTag(id: id, name: name, color: tagDraftColor))
+        }
+        try? dir.save(root: root)
+        editingTag = nil
+        newTagId = nil
+        reloadTags()
+    }
+
+    func cancelTag() {
+        if let n = newTagId { tags.removeAll { $0.id == n } }
+        newTagId = nil
+        editingTag = nil
+        confirmDeleteTag = nil
+    }
+
+    func deleteTag(_ id: UUID) {
+        try? controller.recorder.store.deleteTag(id)
+        confirmDeleteTag = nil
+        reloadTags()
     }
 
     func reloadPeople() {
@@ -149,8 +226,10 @@ final class SettingsModel {
 
 struct SettingsView: View {
     @Bindable var model: SettingsModel
+    @FocusState private var tagNameFocused: Bool
 
     var body: some View {
+        ScrollViewReader { proxy in
         Form {
             Section("Общие") {
                 TextField("Как вас зовут", text: $model.myName)
@@ -219,6 +298,8 @@ struct SettingsView: View {
                 }
             }
 
+            tagsSection
+
             Section {
                 Picker("Мессенджер", selection: $model.messenger) {
                     ForEach(PublicInput.Messenger.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -275,7 +356,99 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: model.scrollToTags) { _, _ in withAnimation { proxy.scrollTo("tags", anchor: .top) } }
+        }
         .frame(minWidth: 560, minHeight: 480)
+    }
+
+    // MARK: - Теги
+
+    private var tagsSection: some View {
+        Section {
+            ForEach(model.tags) { t in
+                if model.editingTag == t.id {
+                    tagEditor
+                } else if model.confirmDeleteTag == t.id {
+                    HStack {
+                        Text("Удалить «\(t.name)»? Снимется с \(Self.meetingsGenitive(model.tagCounts[t.id] ?? 0)).")
+                        Spacer()
+                        Button("Отмена") { model.cancelTag() }
+                        Button("Удалить", role: .destructive) { model.deleteTag(t.id) }
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        TagDot(color: t.color, size: 10)
+                        Text(t.name)
+                        Spacer()
+                        Text(Self.meetings(model.tagCounts[t.id] ?? 0)).foregroundStyle(Theme.sec)
+                        Button("Изменить") { model.startEditTag(t) }.buttonStyle(.borderless)
+                        Button("Удалить") { model.cancelTag(); model.confirmDeleteTag = t.id }
+                            .buttonStyle(.borderless).foregroundStyle(Theme.red)
+                    }
+                }
+            }
+            if model.newTagId == nil {
+                Button("Добавить тег") { model.startNewTag() }.buttonStyle(.borderless)
+            }
+        } header: {
+            Text("Теги").id("tags")
+        } footer: {
+            Text("Тег ставится в карточке встречи, по тегам фильтруется список. Удаление снимает тег со всех встреч, сами встречи остаются.")
+                .foregroundStyle(Theme.sec)
+        }
+    }
+
+    private var tagEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Название")
+                Spacer()
+                TextField("", text: $model.tagDraftName, prompt: Text("Например, «Клиенты»"))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 260)
+                    .focused($tagNameFocused)
+                    .onSubmit { model.saveTag() }
+                    .onAppear { tagNameFocused = true }
+            }
+            HStack(spacing: 8) {
+                Text("Цвет")
+                Spacer()
+                ForEach(TagColor.allCases, id: \.self) { c in
+                    Button { model.tagDraftColor = c } label: {
+                        Circle().fill(c.color).frame(width: 18, height: 18)
+                            .padding(3)
+                            .overlay(Circle().strokeBorder(model.tagDraftColor == c ? Theme.ink : .clear, lineWidth: 1.5))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(c.title)
+                    .accessibilityLabel(c.title)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Отмена") { model.cancelTag() }
+                Button("Сохранить") { model.saveTag() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.tagDraftName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// «3 встречи», «нет встреч».
+    static func meetings(_ n: Int) -> String {
+        if n == 0 { return "нет встреч" }
+        let m10 = n % 10, m100 = n % 100
+        let w = m10 == 1 && m100 != 11 ? "встреча" : (2...4).contains(m10) && !(12...14).contains(m100) ? "встречи" : "встреч"
+        return "\(n) \(w)"
+    }
+
+    /// «с 1 встречи», «с 5 встреч».
+    static func meetingsGenitive(_ n: Int) -> String {
+        let m10 = n % 10, m100 = n % 100
+        return "\(n) " + (m10 == 1 && m100 != 11 ? "встречи" : "встреч")
     }
 
     static func voices(_ n: Int) -> String {

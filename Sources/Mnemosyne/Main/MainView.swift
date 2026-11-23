@@ -76,6 +76,14 @@ struct Sidebar: View {
             .padding(.top, 12)
             .background(Button("") { searchFocused = true }.keyboardShortcut("f", modifiers: [.command, .shift]).opacity(0))
 
+            if !library.tagDirectory.tags.isEmpty {
+                FlowLayout(spacing: 6) {
+                    filterChip(nil)
+                    ForEach(library.tagDirectory.tags) { filterChip($0) }
+                }
+                .padding(.top, 10)
+            }
+
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(library.groups, id: \.title) { group in
@@ -83,8 +91,9 @@ struct Sidebar: View {
                             .padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
                         ForEach(group.items) { item in row(item) }
                     }
-                    if library.groups.isEmpty, !library.query.isEmpty {
-                        Text("Ничего не нашлось").font(.system(size: 13)).foregroundStyle(Theme.sec).padding(10)
+                    if library.groups.isEmpty, !library.query.isEmpty || !library.tagFilter.isEmpty {
+                        Text(library.query.isEmpty ? "Нет встреч со всеми выбранными тегами." : "Ничего не нашлось")
+                            .font(.system(size: 13)).foregroundStyle(Theme.sec).padding(10)
                     }
                 }
             }
@@ -95,6 +104,25 @@ struct Sidebar: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 14)
+    }
+
+    /// Чип фильтра: `nil` — «Все».
+    private func filterChip(_ tag: MeetingTag?) -> some View {
+        let on = tag.map { library.tagFilter.contains($0.id) } ?? library.tagFilter.isEmpty
+        return Button {
+            if let tag { library.toggleFilter(tag.id) } else { library.tagFilter = [] }
+        } label: {
+            HStack(spacing: 6) {
+                if let tag { TagDot(color: tag.color) }
+                Text(tag?.name ?? "Все").font(.system(size: 12, weight: on ? .semibold : .regular))
+            }
+            .foregroundStyle(on ? Theme.ink : Theme.sec)
+            .padding(.horizontal, 10).frame(height: 26)
+            .background(Capsule().fill(on ? Theme.hover : .clear))
+            .overlay(Capsule().strokeBorder(Theme.line))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func nav(_ title: String, _ section: LibraryModel.Section, count: Int?) -> some View {
@@ -128,9 +156,12 @@ struct Sidebar: View {
                     Text(snippet.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: ""))
                         .font(.system(size: 12)).foregroundStyle(Theme.sec).lineLimit(2)
                 } else {
-                    Text(Self.detail(item, library: library))
-                        .font(.system(size: 12))
-                        .foregroundStyle(item.meta.status == .failed ? Theme.red : Theme.sec)
+                    HStack(spacing: 6) {
+                        Text(Self.detail(item, library: library))
+                            .font(.system(size: 12))
+                            .foregroundStyle(item.meta.status == .failed ? Theme.red : Theme.sec)
+                        ForEach(library.tags(of: item)) { TagDot(color: $0.color, size: 7).help($0.name) }
+                    }
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)

@@ -199,7 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !controller.settings.onboardingDone, ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_MAIN"] == nil {
                 controller.showOnboarding()
             }
-            if ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_SETTINGS"] != nil { controller.showSettings() }
+            if let v = ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_SETTINGS"] {
+                // `tags` — сразу к разделу «Теги», `newtag` — с новым тегом (для скриншотов).
+                controller.showSettings(newTag: v == "newtag", scrollToTags: v == "tags")
+            }
             if ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_ONBOARDING"] != nil { controller.showOnboarding() }
         }
     }

@@ -102,6 +102,33 @@ struct MeetingView: View {
         Button("Удалить встречу…", role: .destructive) { deleteMeeting() }
     }
 
+    // MARK: - Теги
+
+    private var tagsRow: some View {
+        let mine = library.tagDirectory.tags(for: detail.meta.tags)
+        return FlowLayout(spacing: 6) {
+            ForEach(mine) { TagChip(tag: $0) }
+            Menu {
+                ForEach(library.tagDirectory.tags) { t in
+                    Toggle(isOn: Binding(get: { mine.contains(t) }, set: { library.setTag(t, on: $0, meeting: detail.meta.id) })) {
+                        Label { Text(t.name) } icon: { Image(nsImage: t.color.menuImage) }
+                    }
+                }
+                Divider()
+                Button("Новый тег…") { library.controller.showSettings(newTag: true) }
+                Button("Управлять тегами…") { library.controller.showSettings() }
+            } label: {
+                Text(mine.isEmpty ? "+ Тег" : "+").font(.system(size: 12)).foregroundStyle(Theme.sec)
+                    .padding(.horizontal, 9).frame(height: 24)
+                    .overlay(Capsule().strokeBorder(Theme.line))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.top, 2)
+    }
+
     // MARK: - Шапка
 
     private var header: some View {
@@ -138,6 +165,8 @@ struct MeetingView: View {
                     Text(Self.peopleCount(detail.people.count)).font(.system(size: 13)).foregroundStyle(Theme.sec)
                 }
             }
+
+            tagsRow
 
             if MeetingEditing.analysisIsStale(detail.meta), !library.controller.analysis.isQueued(detail.meta.id) {
                 HStack(spacing: 10) {
@@ -212,7 +241,7 @@ struct MeetingView: View {
 
     @ViewBuilder private func content(proxy: ScrollViewProxy) -> some View {
         switch library.tab {
-        case .summary: SummaryTab(library: library, detail: detail)
+        case .summary: SummaryTab(library: library, detail: detail, copied: copiedSummary, copy: copySummaryAnimated)
         case .notes: NotesTab(detail: detail)
         case .publicText: PublicTab(library: library, detail: detail, copied: $copied, copy: copyPublic)
         case .transcript: TranscriptTab(library: library, detail: detail, proxy: proxy)
@@ -257,6 +286,8 @@ struct MeetingView: View {
         _ = try? library.store.update(id: detail.meta.id) { $0.skipAnalysis = skip }
         library.reload()
     }
+
+    private func copySummaryAnimated() { withAnimation(.easeOut(duration: 0.15)) { copySummary() } }
 
     /// Саммари целиком, как на вкладке: коротко, решения, задачи, темы, инсайты, участники.
     private func copySummary() {
