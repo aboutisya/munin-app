@@ -75,7 +75,9 @@ public actor MeetingProcessor {
         }
 
         // 3. Распознавание дорожек по очереди, чтобы не делить GPU.
-        let prompt = Self.prompt(meta: meta, vocabulary: vocabulary)
+        // Язык, заданный у самой встречи (распознать заново на другом языке), важнее настройки.
+        let language = meta.language ?? language
+        let prompt = Self.prompt(meta: meta, vocabulary: vocabulary, language: language)
         let total = prepared.reduce(0.0) { $0 + Double($1.samples.count) } / Double(Self.sampleRate)
         var done = 0.0
         var recognized: [TrackInfo.Role: [RecognizedSegment]] = [:]
@@ -161,11 +163,18 @@ public actor MeetingProcessor {
     }
 
     /// Подсказка для Whisper: имена участников и словарь терминов.
-    static func prompt(meta: MeetingMeta, vocabulary: [String]) -> String? {
+    /// Подсказка Whisper на языке встречи: русская подсказка на английской речи тянет к русскому.
+    /// При автоопределении — только имена и термины, без слов какого-либо языка.
+    static func prompt(meta: MeetingMeta, vocabulary: [String], language: String = "ru") -> String? {
         let names = (meta.participants ?? []).map(\.displayName).filter { !$0.isEmpty }
+        if language == MeetingLanguage.auto {
+            let all = names + vocabulary
+            return all.isEmpty ? nil : all.joined(separator: ", ") + "."
+        }
+        let (people, terms) = language == "en" ? ("Participants", "Terms") : ("Участники", "Термины")
         var parts: [String] = []
-        if !names.isEmpty { parts.append("Участники: " + names.joined(separator: ", ") + ".") }
-        if !vocabulary.isEmpty { parts.append("Термины: " + vocabulary.joined(separator: ", ") + ".") }
+        if !names.isEmpty { parts.append("\(people): " + names.joined(separator: ", ") + ".") }
+        if !vocabulary.isEmpty { parts.append("\(terms): " + vocabulary.joined(separator: ", ") + ".") }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 

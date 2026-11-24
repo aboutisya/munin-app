@@ -32,7 +32,7 @@ struct TasksView: View {
                 }
                 ForEach(groups(visible), id: \.title) { g in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(g.title).font(.system(size: 12)).foregroundStyle(g.title == "Просрочено" ? Theme.red : Theme.sec)
+                        Text(g.title).font(.system(size: 12)).foregroundStyle(g.title == String(localized: "Просрочено") ? Theme.red : Theme.sec)
                             .padding(.top, 18).padding(.bottom, 6)
                         ForEach(g.items) { row($0) }
                     }
@@ -61,7 +61,8 @@ struct TasksView: View {
             else if t.due <= week { soon.append(t) }
             else { later.append(t) }
         }
-        return [("Просрочено", overdue), ("Ближайшие 7 дней", soon), ("Позже", later), ("Без срока", none)].filter { !$0.1.isEmpty }
+        return [(String(localized: "Просрочено"), overdue), (String(localized: "Ближайшие 7 дней"), soon),
+                (String(localized: "Позже"), later), (String(localized: "Без срока"), none)].filter { !$0.1.isEmpty }
     }
 
     private func row(_ t: TaskItem) -> some View {
@@ -95,8 +96,8 @@ struct TasksView: View {
 
     private func meta(_ t: TaskItem) -> String {
         var parts: [String] = []
-        if !mineOnly || !t.mine { parts.append(t.who.isEmpty ? "не назначен" : t.who) }
-        if !t.due.isEmpty { parts.append("до " + Self.due(t.due)) }
+        if !mineOnly || !t.mine { parts.append(t.who.isEmpty ? String(localized: "не назначен") : t.who) }
+        if !t.due.isEmpty { parts.append(String(localized: "до \(Self.due(t.due))")) }
         parts.append("")
         return parts.joined(separator: " · ")
     }
@@ -105,6 +106,6 @@ struct TasksView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         guard let d = f.date(from: iso) else { return iso }
-        return d.formatted(.dateTime.day().month(.wide).weekday(.abbreviated).locale(Locale(identifier: "ru_RU")))
+        return d.formatted(.dateTime.day().month(.wide).weekday(.abbreviated).locale(UILanguage.locale))
     }
 }

@@ -9,16 +9,16 @@ enum MeetingsFolder {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "Выбрать"
-        panel.message = "Куда сохранять встречи. Уже записанные останутся в прежней папке."
+        panel.prompt = String(localized: "Выбрать")
+        panel.message = String(localized: "Куда сохранять встречи. Уже записанные останутся в прежней папке.")
         panel.directoryURL = settings.meetingsRoot.deletingLastPathComponent()
         guard panel.runModal() == .OK, let url = panel.url, url != settings.meetingsRoot else { return }
         settings.meetingsRoot = url
         let alert = NSAlert()
-        alert.messageText = "Папка встреч изменится после перезапуска"
+        alert.messageText = String(localized: "Папка встреч изменится после перезапуска")
         alert.informativeText = url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        alert.addButton(withTitle: "Перезапустить")
-        alert.addButton(withTitle: "Позже")
+        alert.addButton(withTitle: String(localized: "Перезапустить"))
+        alert.addButton(withTitle: String(localized: "Позже"))
         if alert.runModal() == .alertFirstButtonReturn { relaunch() }
     }
 

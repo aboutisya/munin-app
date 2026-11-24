@@ -25,11 +25,11 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         center.setNotificationCategories([
             UNNotificationCategory(identifier: ID.startCategory,
-                                   actions: [UNNotificationAction(identifier: ID.record, title: "Записать")],
+                                   actions: [UNNotificationAction(identifier: ID.record, title: String(localized: "Записать"))],
                                    intentIdentifiers: []),
             UNNotificationCategory(identifier: ID.endCategory,
-                                   actions: [UNNotificationAction(identifier: ID.stop, title: "Остановить"),
-                                             UNNotificationAction(identifier: ID.snooze, title: "Ещё 15 минут")],
+                                   actions: [UNNotificationAction(identifier: ID.stop, title: String(localized: "Остановить")),
+                                             UNNotificationAction(identifier: ID.snooze, title: String(localized: "Ещё 15 минут"))],
                                    intentIdentifiers: []),
         ])
     }
@@ -40,8 +40,8 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
 
     func postStart(_ event: CalendarEventInfo) {
         let content = UNMutableNotificationContent()
-        content.title = "Начинается «\(event.title)»"
-        content.body = "Записать встречу?"
+        content.title = String(localized: "Начинается «\(event.title)»")
+        content.body = String(localized: "Записать встречу?")
         content.categoryIdentifier = ID.startCategory
         content.userInfo = ["eventId": event.id]
         post(id: "start-\(event.id)", content)
@@ -49,16 +49,16 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
 
     func postEnd(title: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Похоже, встреча закончилась"
-        content.body = "«\(title)» всё ещё записывается"
+        content.title = String(localized: "Похоже, встреча закончилась")
+        content.body = String(localized: "«\(title)» всё ещё записывается")
         content.categoryIdentifier = ID.endCategory
         post(id: ID.endRequest, content)
     }
 
     func postTranscriptReady(title: String, file: URL) {
         let content = UNMutableNotificationContent()
-        content.title = "Транскрипт готов"
-        content.body = "«\(title)»"
+        content.title = String(localized: "Транскрипт готов")
+        content.body = String(localized: "«\(title)»")
         content.categoryIdentifier = ID.readyCategory
         content.userInfo = ["path": file.path]
         post(id: "ready-\(file.path.hashValue)", content)
@@ -66,8 +66,8 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
 
     func postSummaryReady(title: String, file: URL) {
         let content = UNMutableNotificationContent()
-        content.title = "Саммари готово"
-        content.body = "«\(title)»"
+        content.title = String(localized: "Саммари готово")
+        content.body = String(localized: "«\(title)»")
         content.categoryIdentifier = ID.readyCategory
         content.userInfo = ["path": file.path]
         post(id: "summary-\(file.path.hashValue)", content)
@@ -76,14 +76,14 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
     /// Одно уведомление на попадание в лимит: «повторим в 15:10, транскрипт готов».
     func postLimit(title: String, retryAt: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Лимит подписки Claude"
-        content.body = "Анализ «\(title)» повторим в \(retryAt). Транскрипт уже готов."
+        content.title = String(localized: "Лимит подписки Claude")
+        content.body = String(localized: "Анализ «\(title)» повторим в \(retryAt). Транскрипт уже готов.")
         post(id: "limit", content)
     }
 
     func postAnalysisFailed(title: String, error: String, transcript: URL?) {
         let content = UNMutableNotificationContent()
-        content.title = "Анализ «\(title)» не удался"
+        content.title = String(localized: "Анализ «\(title)» не удался")
         content.body = error
         if let transcript {
             content.categoryIdentifier = ID.readyCategory
@@ -94,7 +94,7 @@ final class Notifications: NSObject, UNUserNotificationCenterDelegate {
 
     func postProcessingFailed(title: String, error: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Не удалось обработать «\(title)»"
+        content.title = String(localized: "Не удалось обработать «\(title)»")
         content.body = error
         post(id: "failed-\(title.hashValue)", content)
     }

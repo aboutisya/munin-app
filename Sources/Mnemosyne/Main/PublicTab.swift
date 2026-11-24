@@ -18,10 +18,12 @@ struct PublicTab: View {
         if let text = detail.publicSummary {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 14) {
-                    Text("Для \(messenger.title)\(library.controller.settings.ruTextActive ? ", вычитано через /ru-text" : ""). Без тональности и фидбека.")
+                    Text(library.controller.settings.ruTextActive
+                         ? String(localized: "Для \(messenger.title), вычитано через /ru-text. Без тональности и фидбека.")
+                         : String(localized: "Для \(messenger.title). Без тональности и фидбека."))
                         .font(.system(size: 13)).foregroundStyle(Theme.sec)
                     Spacer()
-                    LinkButton(editing ? "Готово" : "Редактировать") { editing ? save() : startEditing(text) }
+                    LinkButton(editing ? String(localized: "Готово") : String(localized: "Редактировать")) { editing ? save() : startEditing(text) }
                     Button(copied ? "Скопировано" : "Скопировать текст") { if editing { save() }; copy() }
                         .buttonStyle(Pill(dark: true))
                 }
@@ -43,13 +45,13 @@ struct PublicTab: View {
                 HStack(spacing: 6) {
                     status.font(.system(size: 13)).foregroundStyle(Theme.sec)
                     Spacer()
-                    if !busy { LinkButton("Сформировать заново") { regenerate() }.help("Один вызов Claude. Ручные правки заменятся.") }
+                    if !busy { LinkButton(String(localized: "Сформировать заново")) { regenerate() }.help("Один вызов Claude. Ручные правки заменятся.") }
                 }
             }
             .onChange(of: detail.meta.id) { _, _ in editing = false }
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                SectionCap("Публичное саммари")
+                SectionCap(String(localized: "Публичное саммари"))
                 status.font(.system(size: 15)).fixedSize(horizontal: false, vertical: true)
                 if detail.analysis != nil, !busy, detail.meta.steps?["public"]?.status != .queuedLimit {
                     Button("Сформировать") { regenerate() }.buttonStyle(Pill(dark: true))
@@ -79,7 +81,7 @@ struct PublicTab: View {
         } else if step?.status == .failed, let e = step?.error {
             Text("Не удалось: \(e)").foregroundStyle(Theme.red)
         } else if detail.publicSummary != nil {
-            Text(step?.finishedAt.map { "Сформировано \(Format.day($0))" } ?? "")
+            Text(step?.finishedAt.map { String(localized: "Сформировано \(UIFormat.day($0))") } ?? "")
         } else if detail.meta.skipAnalysis == true {
             Text("Анализ отключён для этой встречи.")
         } else if detail.analysis == nil {
@@ -97,7 +99,7 @@ struct PublicTab: View {
             HStack(spacing: 10) {
                 Text(detail.meta.steps?["public"]?.error != nil ? "Модель сделала новую версию, но здесь ваши правки." : "Здесь ваши правки.")
                     .font(.system(size: 13))
-                LinkButton("Вернуть версию модели") { write(generated) }
+                LinkButton(String(localized: "Вернуть версию модели")) { write(generated) }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -109,7 +111,7 @@ struct PublicTab: View {
         let list = detail.analysis?.diagrams ?? []
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionCap("Схемы — вставляйте в Mattermost отдельно от текста")
+                SectionCap(String(localized: "Схемы — вставляйте в Mattermost отдельно от текста"))
                 ForEach(Array(list.enumerated()), id: \.offset) { i, d in
                     HStack(spacing: 14) {
                         if let url = DiagramRenderer.pngURL(folder: detail.folder, index: i, type: d.type), let img = NSImage(contentsOf: url) {

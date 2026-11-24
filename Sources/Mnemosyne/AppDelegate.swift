@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller.openMain(meeting: meeting, tab: LibraryModel.Tab.allCases.first { "\($0)" == tab })
                 if tab == "tasks" { controller.mainWindow.library.section = .tasks }
             }
-            if recovered > 0 { statusBar.notice = "Восстановлено прерванных записей: \(recovered)" }
+            if recovered > 0 { statusBar.notice = String(localized: "Восстановлено прерванных записей: \(recovered)") }
             if !controller.settings.onboardingDone, ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_MAIN"] == nil {
                 controller.showOnboarding()
             }
@@ -299,7 +299,13 @@ final class AppSettings {
     /// ru-text установлен и включён в настройках.
     var ruTextActive: Bool { useRuText && SkillInstaller.isInstalled("ru-text") }
 
-    var owner: OwnerProfile { OwnerProfile(name: myName, role: myRole, vocabulary: vocabulary) }
+    var owner: OwnerProfile { OwnerProfile(name: myName, role: myRole, vocabulary: vocabulary, summaryLanguage: summaryLanguage) }
+
+    /// Язык саммари: как у встречи, русский или английский.
+    var summaryLanguage: String {
+        get { defaults.string(forKey: "summaryLanguage") ?? MeetingLanguage.sameAsMeeting }
+        set { defaults.set(newValue, forKey: "summaryLanguage") }
+    }
 
     /// Папка встреч. Меняется в онбординге или настройках, применяется после перезапуска.
     var meetingsRoot: URL {
@@ -307,7 +313,7 @@ final class AppSettings {
         set { defaults.set(newValue.path, forKey: MeetingStore.rootDefaultsKey) }
     }
 
-    /// Язык распознавания: `ru` или `auto`.
+    /// Язык распознавания по умолчанию: `ru`, `en` или `auto`. У встречи можно задать свой (`meta.language`).
     var language: String {
         get { defaults.string(forKey: "language") ?? "ru" }
         set { defaults.set(newValue, forKey: "language") }
@@ -322,6 +328,12 @@ final class AppSettings {
     var vocabulary: [String] {
         vocabularyText.split(whereSeparator: { $0 == "\n" || $0 == "," })
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// Стиль саммари по умолчанию. Не «Деловой» — после разбора саммари пересобирается в нём (+1 вызов Claude).
+    var defaultSummaryStyle: String {
+        get { defaults.string(forKey: "defaultSummaryStyle") ?? SummaryStyle.businessId }
+        set { defaults.set(newValue, forKey: "defaultSummaryStyle") }
     }
 
     /// Модель Claude: `sonnet` или `opus`.
@@ -354,9 +366,9 @@ enum AppTheme: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .system: "Как в системе"
-        case .light: "Светлая"
-        case .dark: "Тёмная"
+        case .system: String(localized: "Как в системе")
+        case .light: String(localized: "Светлая")
+        case .dark: String(localized: "Тёмная")
         }
     }
 

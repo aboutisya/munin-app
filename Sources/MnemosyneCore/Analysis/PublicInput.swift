@@ -43,7 +43,7 @@ public enum PublicInput {
 
     public static func build(_ a: Analysis, meta: MeetingMeta, transcript t: Transcript,
                              diagrams: [DiagramRef], messenger: Messenger = .mattermost, proofread: Bool = true,
-                             calendar: Calendar = .current) -> String {
+                             language: String = "ru", calendar: Calendar = .current) -> String {
         let names = names(a, meta: meta, transcript: t)
         func person(_ s: String) -> String {
             let v = s.trimmingCharacters(in: .whitespaces)
@@ -57,6 +57,7 @@ public enum PublicInput {
 
         var lines = ["# Встреча", ""]
         lines.append("- Мессенджер: \(messenger.title)")
+        if language != "ru" { lines.append("- Язык сообщения: \(MeetingLanguage.name(language)) (\(language))") }
         lines.append("- Вычитка через ru-text: \(proofread ? "да" : "нет")")
         lines.append("- Название: \(meta.title)")
         lines.append("- Дата: \(df.string(from: meta.startedAt))")

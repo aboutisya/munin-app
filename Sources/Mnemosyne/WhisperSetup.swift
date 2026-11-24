@@ -36,7 +36,7 @@ final class WhisperSetup {
 
     func install() {
         guard !isBusy else { return }
-        state = .installing("Готовлю окружение…")
+        state = .installing(String(localized: "Готовлю окружение…"))
         Task {
             do {
                 try await WhisperEnvironment.installEnvironment { line in
@@ -48,16 +48,24 @@ final class WhisperSetup {
                 try await WhisperEnvironment.downloadModel { p in
                     Task { @MainActor in if case .downloading = self.state { self.state = .downloading(p) } }
                 }
-                state = WhisperEnvironment.isReady ? .ready : .failed("Установка не завершилась — попробуйте ещё раз")
+                state = WhisperEnvironment.isReady ? .ready : .failed(String(localized: "Установка не завершилась — попробуйте ещё раз"))
             } catch {
                 state = .failed(error.localizedDescription)
             }
         }
     }
 
-    /// Строки из лога `installEnvironment`, которые стоит показать человеку.
+    /// Строки из лога `installEnvironment`, которые стоит показать человеку. Лог пишет ядро по-русски —
+    /// известные шаги переводим, остальное показываем как есть.
     nonisolated static func humanize(_ line: String) -> String? {
-        line.hasPrefix("Ставлю") || line.hasPrefix("Готовлю") ? line : nil
+        guard line.hasPrefix("Ставлю") || line.hasPrefix("Готовлю") else { return nil }
+        if line.hasPrefix("Ставлю Python ") {
+            let version = line.dropFirst("Ставлю Python ".count).trimmingCharacters(in: CharacterSet(charactersIn: "…"))
+            return String(localized: "Ставлю Python \(version)…")
+        }
+        if line.hasPrefix("Ставлю mlx-whisper") { return String(localized: "Ставлю mlx-whisper…") }
+        if line.hasPrefix("Ставлю зависимости") { return String(localized: "Ставлю зависимости…") }
+        return line
     }
 }
 

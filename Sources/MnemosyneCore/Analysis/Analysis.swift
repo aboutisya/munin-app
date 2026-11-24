@@ -123,10 +123,13 @@ public struct OwnerProfile: Sendable, Equatable {
     public var name: String
     public var role: String
     public var vocabulary: [String]
-    public init(name: String = "", role: String = "", vocabulary: [String] = []) {
+    /// Язык саммари: `meeting` (как у встречи), `ru` или `en`.
+    public var summaryLanguage: String
+    public init(name: String = "", role: String = "", vocabulary: [String] = [], summaryLanguage: String = MeetingLanguage.sameAsMeeting) {
         self.name = name
         self.role = role
         self.vocabulary = vocabulary
+        self.summaryLanguage = summaryLanguage
     }
 }
 
@@ -158,6 +161,11 @@ public enum AnalysisInput {
             if !owner.name.isEmpty { lines.append("- Имя: \(owner.name)") }
             if !owner.role.isEmpty { lines.append("- Чем занимается: \(owner.role)") }
             lines.append("")
+        }
+        // Русский — по умолчанию в скиллах; блок только для другого языка, чтобы не менять хэши старых встреч.
+        let language = MeetingLanguage.summary(setting: owner?.summaryLanguage ?? MeetingLanguage.sameAsMeeting, transcriptLanguage: t.language)
+        if language != "ru" {
+            lines += ["# Язык саммари", "", "\(MeetingLanguage.name(language)) (\(language))", ""]
         }
         lines += ["# Встреча", ""]
         lines.append("- Название: \(meta.title)")

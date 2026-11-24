@@ -4,3 +4,7 @@ vendor/
 *.dmg
 .DS_Store
 .swiftpm/
+
+# Журнал сессий (ведётся /start-session и /finish-session)
+/changelog.md
+/decisions.md

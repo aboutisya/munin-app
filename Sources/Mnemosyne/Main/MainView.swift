@@ -57,12 +57,14 @@ struct Sidebar: View {
                 .accessibilityLabel("Настройки")
             }
             .padding(.leading, 10).padding(.trailing, 4).padding(.bottom, 14)
-            nav("Встречи", .meetings, count: nil)
-            nav("Задачи", .tasks, count: library.myOpenTasks)
+            nav(String(localized: "Встречи"), .meetings, count: nil)
+            nav(String(localized: "Задачи"), .tasks, count: library.myOpenTasks)
+            ProjectsSection(library: library)
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.sec)
-                TextField("Поиск по встречам", text: $library.query)
+                TextField(library.projectFilter.flatMap { library.projectDirectory.project($0) }.map { String(localized: "Поиск в «\($0.name)»") } ?? String(localized: "Поиск по встречам"),
+                          text: $library.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .focused($searchFocused)
@@ -91,7 +93,10 @@ struct Sidebar: View {
                             .padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
                         ForEach(group.items) { item in row(item) }
                     }
-                    if library.groups.isEmpty, !library.query.isEmpty || !library.tagFilter.isEmpty {
+                    if library.groups.isEmpty, library.projectFilter != nil, library.query.isEmpty, library.tagFilter.isEmpty {
+                        Text("В проекте пока нет встреч. Новая запись попадёт сюда, а старую можно перенести из её карточки.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.sec).padding(10)
+                    } else if library.groups.isEmpty, !library.query.isEmpty || !library.tagFilter.isEmpty {
                         Text(library.query.isEmpty ? "Нет встреч со всеми выбранными тегами." : "Ничего не нашлось")
                             .font(.system(size: 13)).foregroundStyle(Theme.sec).padding(10)
                     }
@@ -99,7 +104,8 @@ struct Sidebar: View {
             }
             .scrollIndicators(.never)
 
-            RecordButton(controller: library.controller)
+            RecordButton(controller: library.controller,
+                         project: library.projectFilter.flatMap { library.projectDirectory.project($0) }?.name)
                 .padding(.top, 8)
         }
         .padding(.horizontal, 12)
@@ -114,7 +120,7 @@ struct Sidebar: View {
         } label: {
             HStack(spacing: 6) {
                 if let tag { TagDot(color: tag.color) }
-                Text(tag?.name ?? "Все").font(.system(size: 12, weight: on ? .semibold : .regular))
+                Text(tag?.name ?? String(localized: "Все")).font(.system(size: 12, weight: on ? .semibold : .regular))
             }
             .foregroundStyle(on ? Theme.ink : Theme.sec)
             .padding(.horizontal, 10).frame(height: 26)
@@ -126,8 +132,11 @@ struct Sidebar: View {
     }
 
     private func nav(_ title: String, _ section: LibraryModel.Section, count: Int?) -> some View {
-        let on = library.section == section
-        return Button { library.section = section } label: {
+        let on = library.section == section && (section != .meetings || library.projectFilter == nil)
+        return Button {
+            library.section = section
+            if section == .meetings { library.projectFilter = nil }
+        } label: {
             HStack {
                 Text(title).font(.system(size: 14, weight: on ? .semibold : .regular))
                 Spacer()
@@ -157,6 +166,9 @@ struct Sidebar: View {
                         .font(.system(size: 12)).foregroundStyle(Theme.sec).lineLimit(2)
                 } else {
                     HStack(spacing: 6) {
+                        if ProcessingStage.of(item.meta, controller: library.controller) != nil {
+                            ProgressView().controlSize(.mini)
+                        }
                         Text(Self.detail(item, library: library))
                             .font(.system(size: 12))
                             .foregroundStyle(item.meta.status == .failed ? Theme.red : Theme.sec)
@@ -175,30 +187,30 @@ struct Sidebar: View {
     /// «14:31 · 44 мин», «Чт · 30 мин», «в очереди», «ошибка анализа».
     static func detail(_ item: LibraryModel.Item, library: LibraryModel) -> String {
         let m = item.meta
+        if let label = ProcessingStage.listLabel(m, controller: library.controller) { return label }
         switch m.status {
-        case .recording: return "идёт запись"
-        case .saved, .transcribing, .diarizing, .merging:
-            return library.controller.queue.current?.id == m.id ? "обработка" : "в очереди"
-        case .analyzing: return "саммари готовится"
-        case .failed: return m.steps?["analyze"]?.status == .failed ? "ошибка анализа" : "ошибка обработки"
+        case .recording: return String(localized: "идёт запись")
+        case .failed: return m.steps?["analyze"]?.status == .failed ? String(localized: "ошибка анализа") : String(localized: "ошибка обработки")
         case .transcribed where library.controller.analysis.isQueued(m.id):
-            return m.steps?["analyze"]?.status == .queuedLimit ? "ждёт лимита" : "ждёт анализа"
+            return m.steps?["analyze"]?.status == .queuedLimit ? String(localized: "ждёт лимита") : String(localized: "ждёт анализа")
         default: break
         }
         let cal = Calendar.current
-        let ru = Locale(identifier: "ru_RU")
+        let ru = UILanguage.locale
         let when: String
         if cal.isDateInToday(m.startedAt) { when = m.startedAt.formatted(.dateTime.hour().minute().locale(ru)) }
         else if let d = cal.dateComponents([.day], from: m.startedAt, to: Date()).day, d < 7 {
             when = m.startedAt.formatted(.dateTime.weekday(.abbreviated).locale(ru)).capitalizedFirst
         } else { when = m.startedAt.formatted(.dateTime.day().month(.abbreviated).locale(ru)) }
         guard let d = m.durationSeconds else { return when }
-        return "\(when) · \(Format.duration(d))"
+        return "\(when) · \(UIFormat.duration(d))"
     }
 }
 
 struct RecordButton: View {
     let controller: AppController
+    /// Открытый проект: новая запись попадёт в него.
+    var project: String?
 
     var body: some View {
         let recording = controller.recorder.phase == .recording
@@ -211,7 +223,12 @@ struct RecordButton: View {
                     Text("Остановить")
                 } else {
                     Circle().fill(Theme.red).frame(width: 8, height: 8)
-                    Text("Записать")
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Записать")
+                        if let project {
+                            Text("в проект «\(project)»").font(.system(size: 11)).foregroundStyle(Theme.sec).lineLimit(1)
+                        }
+                    }
                 }
                 Spacer()
                 Text("⌃⌥⌘R").foregroundStyle(Theme.sec).font(.system(size: 12))

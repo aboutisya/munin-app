@@ -10,19 +10,19 @@ struct SummaryTab: View {
     var copy: () -> Void = {}
 
     var body: some View {
-        if let a = detail.analysis {
+        if let styled = detail.styledSummary, detail.analysis != nil {
             VStack(alignment: .leading, spacing: 36) {
-                HStack(spacing: 14) {
-                    Text("Для себя: без таймкодов, тональности и фидбека. Markdown.")
-                        .font(.system(size: 13)).foregroundStyle(Theme.sec)
-                    Spacer()
-                    Button(copied ? "Скопировано" : "Скопировать саммари", action: copy)
-                        .buttonStyle(Pill(dark: true))
-                        .disabled(detail.transcript == nil)
-                }
-                .padding(.bottom, -12)
+                StyleBar(library: library, detail: detail, copied: copied, copy: copy)
+                    .padding(.bottom, -12)
+                MarkdownText(styled)
+                ParticipantsSection(library: library, detail: detail)
+            }
+        } else if let a = detail.analysis {
+            VStack(alignment: .leading, spacing: 36) {
+                StyleBar(library: library, detail: detail, copied: copied, copy: copy)
+                    .padding(.bottom, -12)
                 if !a.tldr.isEmpty {
-                    section("Коротко") {
+                    section(String(localized: "Коротко")) {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(Array(a.tldr.enumerated()), id: \.offset) { _, t in
                                 ListRow(ts: nil, jump: nil) { Text("—").foregroundStyle(Theme.sec) } content: { Text(t) }
@@ -31,7 +31,7 @@ struct SummaryTab: View {
                     }
                 }
                 if !a.decisions.isEmpty {
-                    section("Решения") {
+                    section(String(localized: "Решения")) {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(Array(a.decisions.enumerated()), id: \.offset) { _, d in
                                 ListRow(ts: d.ts, jump: library.jump) { Text("—").foregroundStyle(Theme.sec) } content: {
@@ -43,7 +43,7 @@ struct SummaryTab: View {
                     }
                 }
                 if !a.actionItems.isEmpty {
-                    section("Задачи") {
+                    section(String(localized: "Задачи")) {
                         VStack(alignment: .leading, spacing: 14) {
                             ForEach(Array(a.actionItems.enumerated()), id: \.offset) { _, i in
                                 ListRow(ts: i.ts, jump: library.jump) {
@@ -59,7 +59,7 @@ struct SummaryTab: View {
                     }
                 }
                 if !a.summaryByTopics.isEmpty {
-                    section("По темам") {
+                    section(String(localized: "По темам")) {
                         VStack(alignment: .leading, spacing: 24) {
                             ForEach(Array(a.summaryByTopics.enumerated()), id: \.offset) { _, t in
                                 VStack(alignment: .leading, spacing: 8) {
@@ -75,7 +75,7 @@ struct SummaryTab: View {
                     }
                 }
                 if !a.insights.isEmpty {
-                    section("Инсайты") {
+                    section(String(localized: "Инсайты")) {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(Array(a.insights.enumerated()), id: \.offset) { _, i in
                                 ListRow(ts: i.ts, jump: library.jump) { Text("—").foregroundStyle(Theme.sec) } content: { Text(i.text) }
@@ -95,11 +95,11 @@ struct SummaryTab: View {
 
     private func taskMeta(_ i: Analysis.ActionItem) -> String {
         let names = detail.names
-        let who = i.who.isEmpty ? "исполнитель не назван" : (names[i.who] ?? i.who)
+        let who = i.who.isEmpty ? String(localized: "исполнитель не назван") : (names[i.who] ?? i.who)
         let due: String
         if let date = Self.isoDate(i.due) {
-            due = "до " + date.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "ru_RU")))
-        } else { due = i.dueSaid.isEmpty ? "срок не назван" : i.dueSaid }
+            due = String(localized: "до \(date.formatted(.dateTime.day().month(.abbreviated).locale(UILanguage.locale)))")
+        } else { due = i.dueSaid.isEmpty ? String(localized: "срок не назван") : i.dueSaid }
         return "\(who) · \(due)"
     }
 
@@ -126,7 +126,12 @@ struct MarkdownText: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { _, line in
                 let s = String(line).trimmingCharacters(in: .whitespaces)
-                if s.hasPrefix("- ") || s.hasPrefix("* ") {
+                if s.hasPrefix("#") {
+                    // Заголовок раздела из пересборки в другом стиле.
+                    Text(Self.inline(s.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)))
+                        .font(.system(size: 17, weight: .semibold))
+                        .padding(.top, 14)
+                } else if s.hasPrefix("- ") || s.hasPrefix("* ") {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text("—").foregroundStyle(Theme.sec)
                         Text(Self.inline(String(s.dropFirst(2))))
@@ -154,8 +159,18 @@ struct AnalysisStatus: View {
     var body: some View {
         let m = detail.meta
         let analysis = library.controller.analysis
+        if let stage = ProcessingStage.of(m, controller: library.controller) {
+            ProcessingSteps(library: library, meta: m, stage: stage)
+            Text("Пока идёт обработка, можно писать во вкладке «Мои заметки».")
+                .font(.system(size: 13)).foregroundStyle(Theme.sec).padding(.top, -22)
+        } else {
+            status(m, analysis: analysis)
+        }
+    }
+
+    @ViewBuilder private func status(_ m: MeetingMeta, analysis: AnalysisQueue) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionCap("Саммари")
+            SectionCap(String(localized: "Саммари"))
             Group {
                 if m.status.needsProcessing {
                     Text("Сначала распознаём запись. Саммари появится следом.")
@@ -205,13 +220,13 @@ struct ParticipantsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                SectionCap("Участники")
+                SectionCap(String(localized: "Участники"))
                 Menu {
                     ForEach(invitedNotListed, id: \.self) { name in
                         Button(name) { add(name) }
                     }
                     if !invitedNotListed.isEmpty { Divider() }
-                    Button("Новый человек…") { nameDraft = ""; askingName = (nil, "Кого добавить") }
+                    Button("Новый человек…") { nameDraft = ""; askingName = (nil, String(localized: "Кого добавить")) }
                 } label: {
                     Text("Добавить").font(.system(size: 13)).underline().foregroundStyle(Theme.sec)
                 }
@@ -227,13 +242,13 @@ struct ParticipantsSection: View {
                         Text(row.source).font(.system(size: 13)).foregroundStyle(Theme.sec)
                         if let speaker = row.speaker, let suggested = row.suggested {
                             Text("· похоже на \(suggested)?").font(.system(size: 13)).foregroundStyle(Theme.sec)
-                            LinkButton("Да") { rename(speaker, to: suggested, email: row.suggestedEmail) }
+                            LinkButton(String(localized: "Да")) { rename(speaker, to: suggested, email: row.suggestedEmail) }
                         }
                         if let speaker = row.speaker, row.speaker != "me" {
                             Menu {
                                 ForEach(invitedNames, id: \.self) { n in Button(n) { rename(speaker, to: n) } }
                                 if !invitedNames.isEmpty { Divider() }
-                                Button("Другое имя…") { nameDraft = row.generic ? "" : row.name; askingName = (speaker, "Кто это — \(row.name)?") }
+                                Button("Другое имя…") { nameDraft = row.generic ? "" : row.name; askingName = (speaker, String(localized: "Кто это — \(row.name)?")) }
                             } label: {
                                 Text(row.generic ? "Указать, кто это" : "Изменить").font(.system(size: 13)).underline().foregroundStyle(Theme.sec)
                             }
@@ -272,18 +287,18 @@ struct ParticipantsSection: View {
         var seen = Set<String>()
         for s in detail.transcript?.speakers ?? [] {
             let source: String = switch s.nameSource {
-            case "me": "это вы"
-            case "manual": "указано вручную"
-            case "calendar-1on1": "из календаря"
-            case "voice": "по голосу"
-            default: "говорил " + Format.duration(s.talkSeconds)
+            case "me": String(localized: "это вы")
+            case "manual": String(localized: "указано вручную")
+            case "calendar-1on1": String(localized: "из календаря")
+            case "voice": String(localized: "по голосу")
+            default: String(localized: "говорил \(UIFormat.duration(s.talkSeconds))")
             }
             result.append(Row(key: s.id, name: s.label, source: source, speaker: s.id, generic: s.nameSource == "generic",
                               suggested: s.nameSource == "generic" ? s.suggestedName : nil, suggestedEmail: s.suggestedEmail))
             seen.insert(s.label.lowercased())
         }
         for p in detail.meta.participants ?? [] where !p.isMe && !seen.contains(p.displayName.lowercased()) {
-            result.append(Row(key: "p:\(p.displayName)", name: p.displayName, source: "приглашён, без реплик", speaker: nil, generic: false))
+            result.append(Row(key: "p:\(p.displayName)", name: p.displayName, source: String(localized: "приглашён, без реплик"), speaker: nil, generic: false))
         }
         return result
     }

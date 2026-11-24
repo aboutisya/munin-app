@@ -22,6 +22,7 @@ final class TitleModel {
     @ObservationIgnored let alternatives: () -> [CalendarEventInfo]
     @ObservationIgnored private var folder: URL?
     @ObservationIgnored private var pendingSave = false
+    @ObservationIgnored private var finished = false
     @ObservationIgnored var onFinish: (() -> Void)?
 
     init(title: String, event: CalendarEventInfo?, startedAt: Date, endedAt: Date, mode: RecordingMode,
@@ -40,7 +41,7 @@ final class TitleModel {
     /// Название по умолчанию выделено целиком — можно сразу печатать.
     var selectAllOnOpen: Bool { event == nil }
 
-    var durationText: String { Format.duration(endedAt.timeIntervalSince(startedAt)) }
+    var durationText: String { UIFormat.duration(endedAt.timeIntervalSince(startedAt)) }
 
     func choose(_ newEvent: CalendarEventInfo?) {
         // Если название не трогали, оно следует за событием.
@@ -51,20 +52,31 @@ final class TitleModel {
 
     func saved(folder: URL?, error: String?) {
         self.folder = folder
-        self.error = folder == nil ? (error ?? "Запись не сохранилась") : nil
+        self.error = folder == nil ? (error ?? String(localized: "Запись не сохранилась")) : nil
         saving = false
+        if let message = self.error, finished {
+            Log.app.error("recording save failed after title window closed: \(message, privacy: .public)")
+        }
         if pendingSave { apply() }
     }
 
+    /// Если запись ещё сохраняется (CAF → m4a идёт долго на длинных встречах), окно
+    /// закрывается сразу, а название и событие применяются, когда файл будет готов.
     func save() {
         pendingSave = true
-        if !saving { apply() }
+        if saving { finish() } else { apply() }
     }
 
-    func cancel() { onFinish?() }
+    func cancel() { finish() }
+
+    private func finish() {
+        guard !finished else { return }
+        finished = true
+        onFinish?()
+    }
 
     private func apply() {
-        guard var folder else { onFinish?(); return }
+        guard var folder else { finish(); return }
         do {
             if event?.id != initialEvent?.id {
                 folder = try store.rebind(folder, to: event)
@@ -76,11 +88,16 @@ final class TitleModel {
                 folder = try store.rename(folder, to: trimmed, byUser: trimmed != auto)
             }
         } catch {
-            self.error = "Не удалось переименовать: \(error.localizedDescription)"
             pendingSave = false
+            // Окно уже закрыто — ошибку некому показать, пишем в лог; встреча остаётся под прежним названием.
+            if finished {
+                Log.app.error("rename after save failed: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            self.error = String(localized: "Не удалось переименовать: \(error.localizedDescription)")
             return
         }
-        onFinish?()
+        finish()
     }
 }
 
@@ -138,7 +155,7 @@ struct TitleView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Caption(model.saving ? "Сохраняем запись · \(model.durationText)" : "Запись сохранена · \(model.durationText)")
+            Caption(model.saving ? String(localized: "Сохраняем запись · \(model.durationText)") : String(localized: "Запись сохранена · \(model.durationText)"))
 
             VStack(spacing: 6) {
                 TitleField(text: $model.title, selectAll: model.selectAllOnOpen,
@@ -154,7 +171,7 @@ struct TitleView: View {
             }
 
             HStack(spacing: 8) {
-                Caption(model.event == nil ? "Название выделено — печатайте" : "Enter — сохранить")
+                Caption(model.event == nil ? String(localized: "Название выделено — печатайте") : String(localized: "Enter — сохранить"))
                 Spacer()
                 Button("Esc", action: model.cancel).buttonStyle(SmallPill(prominent: false))
                 Button("Сохранить", action: model.save).buttonStyle(SmallPill(prominent: true))
@@ -170,31 +187,31 @@ struct TitleView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
                 if let event = model.event {
-                    Caption("Из календаря: \(event.title), \(Self.time(event.start)) ·")
+                    Caption(String(localized: "Из календаря: \(event.title), \(Self.time(event.start)) ·"))
                 } else {
-                    Caption("Не привязано к событию ·")
+                    Caption(String(localized: "Не привязано к событию ·"))
                 }
-                EventMenu(label: model.event == nil ? "выбрать" : "изменить",
+                EventMenu(label: model.event == nil ? String(localized: "выбрать") : String(localized: "изменить"),
                           events: model.alternatives(), selected: model.event?.id,
                           choose: model.choose)
             }
             if let people = Self.people(model.event) {
                 Caption(people)
             } else if model.event == nil {
-                Caption(model.mode.title)
+                Caption(model.mode.uiTitle)
             }
         }
     }
 
     static func time(_ date: Date) -> String {
-        date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "ru_RU")))
+        date.formatted(.dateTime.hour().minute().locale(UILanguage.locale))
     }
 
     /// «Мария Смирнова, Олег Петров и ещё 4»
     static func people(_ event: CalendarEventInfo?) -> String? {
         guard let others = event?.others, !others.isEmpty else { return nil }
         let names = others.prefix(2).map(\.displayName).joined(separator: ", ")
-        return others.count > 2 ? "\(names) и ещё \(others.count - 2)" : names
+        return others.count > 2 ? String(localized: "\(names) и ещё \(others.count - 2)") : names
     }
 }
 

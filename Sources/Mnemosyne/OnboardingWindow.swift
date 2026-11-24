@@ -18,7 +18,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 640),
                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-            w.title = "Добро пожаловать в Мунин"
+            w.title = String(localized: "Добро пожаловать в Мунин")
             w.titlebarAppearsTransparent = true
             w.isReleasedWhenClosed = false
             let model = OnboardingModel(controller: controller)
@@ -77,18 +77,18 @@ final class OnboardingModel {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: mic = .ok
         case .notDetermined: mic = .unknown
-        default: mic = .missing("Доступ запрещён — включите в Системных настройках")
+        default: mic = .missing(String(localized: "Доступ запрещён — включите в Системных настройках"))
         }
         switch CalendarService.currentAccess() {
         case .granted: calendar = .ok
         case .unknown: calendar = .unknown
-        case .denied: calendar = .missing("Доступ запрещён — включите в Системных настройках")
+        case .denied: calendar = .missing(String(localized: "Доступ запрещён — включите в Системных настройках"))
         }
         controller.whisperSetup.refresh()
         UNUserNotificationCenter.current().getNotificationSettings { @Sendable s in
             let status = s.authorizationStatus
             Task { @MainActor [weak self] in
-                self?.notifications = status == .authorized ? .ok : (status == .denied ? .missing("Отключены — включите в Системных настройках") : .unknown)
+                self?.notifications = status == .authorized ? .ok : (status == .denied ? .missing(String(localized: "Отключены — включите в Системных настройках")) : .unknown)
             }
         }
     }
@@ -131,7 +131,7 @@ final class OnboardingModel {
         let workDir = controller.recorder.store.root.appending(path: ".work/claude")
         Task {
             defer { checkingClaude = false }
-            guard let cli = ClaudeCLI(workDir: workDir) else { claude = .missing("Claude Code не найден"); return }
+            guard let cli = ClaudeCLI(workDir: workDir) else { claude = .missing(String(localized: "Claude Code не найден")); return }
             do {
                 _ = try await cli.checkSubscription()
                 claude = .ok
@@ -193,7 +193,7 @@ struct OnboardingView: View {
                 .font(.system(size: 15)).foregroundStyle(Theme.sec).fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 10) {
-                SectionCap("О вас")
+                SectionCap(String(localized: "О вас"))
                 TextField("Как вас зовут", text: $model.name).textFieldStyle(.roundedBorder).frame(maxWidth: 440)
                 TextField("Чем занимаетесь", text: $model.role, prompt: Text("например, продакт-менеджер платформы платежей"))
                     .textFieldStyle(.roundedBorder).frame(maxWidth: 440)
@@ -202,7 +202,7 @@ struct OnboardingView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                SectionCap("Куда отправляете итоги встреч")
+                SectionCap(String(localized: "Куда отправляете итоги встреч"))
                 Picker("", selection: $model.messenger) {
                     ForEach(PublicInput.Messenger.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -213,11 +213,11 @@ struct OnboardingView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                SectionCap("Папка встреч")
+                SectionCap(String(localized: "Папка встреч"))
                 HStack(spacing: 10) {
                     Text(model.controller.recorder.store.root.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
                         .font(.system(size: 15))
-                    LinkButton("Изменить") { MeetingsFolder.choose(settings: model.controller.settings) }
+                    LinkButton(String(localized: "Изменить")) { MeetingsFolder.choose(settings: model.controller.settings) }
                 }
             }
         }
@@ -228,16 +228,16 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Доступы и инструменты").font(.system(size: 24, weight: .bold)).tracking(-0.4)
             VStack(alignment: .leading, spacing: 14) {
-                step("mic", "Микрофон", "Ваш голос на встрече.", model.mic, action: "Разрешить", model.requestMic)
-                step("speaker.wave.2", "Звук приложений", "Голоса собеседников из Zoom, Толка, Meet. macOS спросит при первой записи.",
-                     .unknown, action: "Настройки", model.openAudioCapture)
-                step("calendar", "Календарь", "Название встречи и участники.", model.calendar, action: "Разрешить", model.requestCalendar)
-                step("bell", "Уведомления", "«Встреча начинается — записать?», «Саммари готово».", model.notifications, action: "Разрешить", model.requestNotifications)
+                step("mic", String(localized: "Микрофон"), String(localized: "Ваш голос на встрече."), model.mic, action: String(localized: "Разрешить"), model.requestMic)
+                step("speaker.wave.2", String(localized: "Звук приложений"), String(localized: "Голоса собеседников из Zoom, Толка, Meet. macOS спросит при первой записи."),
+                     .unknown, action: String(localized: "Настройки"), model.openAudioCapture)
+                step("calendar", String(localized: "Календарь"), String(localized: "Название встречи и участники."), model.calendar, action: String(localized: "Разрешить"), model.requestCalendar)
+                step("bell", String(localized: "Уведомления"), String(localized: "«Встреча начинается — записать?», «Саммари готово»."), model.notifications, action: String(localized: "Разрешить"), model.requestNotifications)
             }
             Divider()
             VStack(alignment: .leading, spacing: 14) {
-                step("terminal", "Claude Code", "Анализ по вашей подписке, без API-ключей. Не вошли — в Терминале: claude /login.",
-                     model.claude, action: model.checkingClaude ? "Проверяю…" : "Проверить", model.checkClaude)
+                step("terminal", "Claude Code", String(localized: "Анализ по вашей подписке, без API-ключей. Не вошли — в Терминале: claude /login."),
+                     model.claude, action: model.checkingClaude ? String(localized: "Проверяю…") : String(localized: "Проверить"), model.checkClaude)
                 WhisperSetupRow(setup: model.controller.whisperSetup)
             }
         }
@@ -252,10 +252,10 @@ struct OnboardingView: View {
                 .font(.system(size: 13)).foregroundStyle(Theme.sec).fixedSize(horizontal: false, vertical: true)
             VoiceEnrollmentView(model: model.voice, name: model.name)
             VStack(alignment: .leading, spacing: 8) {
-                SectionCap("Перед записью")
-                tip("Предупреждайте собеседников, что встреча записывается.")
-                tip("В AirPods выберите в Zoom и Meet микрофон MacBook — иначе звук станет хуже.")
-                tip("Начать и остановить запись — ⌃⌥⌘R или ворон в строке меню.")
+                SectionCap(String(localized: "Перед записью"))
+                tip(String(localized: "Предупреждайте собеседников, что встреча записывается."))
+                tip(String(localized: "В AirPods выберите в Zoom и Meet микрофон MacBook — иначе звук станет хуже."))
+                tip(String(localized: "Начать и остановить запись — ⌃⌥⌘R или ворон в строке меню."))
             }
             .padding(.top, 4)
         }
@@ -276,7 +276,7 @@ struct OnboardingView: View {
             .animation(.easeOut(duration: 0.2), value: model.page)
             Spacer()
             if model.page < Self.tourPages {
-                LinkButton("Пропустить знакомство") {
+                LinkButton(String(localized: "Пропустить знакомство")) {
                     withAnimation(.easeInOut(duration: 0.25)) { model.page = Self.tourPages }
                 }
                 .padding(.trailing, 6)

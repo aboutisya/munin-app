@@ -14,11 +14,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     init(controller: AppController) { self.controller = controller }
 
-    func show(newTag: Bool = false, scrollToTags: Bool = false) {
+    func show(newTag: Bool = false, scrollToTags: Bool = false, newStyle: Bool = false) {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            w.title = "Настройки Мунина"
+            w.title = String(localized: "Настройки Мунина")
             w.isReleasedWhenClosed = false
             w.minSize = NSSize(width: 560, height: 480)
             let model = SettingsModel(controller: controller)
@@ -29,10 +29,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window = w
         }
         model?.reloadTags()
+        model?.reloadStyles()
         // Окно могло только что создаться: прокрутка сработает, когда форма уже на экране.
-        if newTag || scrollToTags {
+        if newTag || scrollToTags || newStyle {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                if newTag { self?.model?.startNewTag() } else { self?.model?.scrollToTags += 1 }
+                if newStyle { self?.model?.startNewStyle() }
+                else if newTag { self?.model?.startNewTag() } else { self?.model?.scrollToTags += 1 }
             }
         }
         NSApp.setActivationPolicy(.regular)
@@ -57,6 +59,9 @@ final class SettingsModel {
     var messenger: PublicInput.Messenger { didSet { settings.messenger = messenger } }
     var theme: AppTheme { didSet { settings.theme = theme } }
     var language: String { didSet { settings.language = language } }
+    var summaryLanguage: String { didSet { settings.summaryLanguage = summaryLanguage } }
+    var uiLanguage: UILanguage { didSet { UILanguage.chosen = uiLanguage; uiLanguageChanged = true } }
+    var uiLanguageChanged = false
     var vocabulary: String { didSet { settings.vocabularyText = vocabulary } }
     var model: String { didSet { settings.claudeModel = model } }
     var endReminder: Int { didSet { settings.endReminderMinutes = endReminder } }
@@ -90,6 +95,16 @@ final class SettingsModel {
     /// Прокрутить к разделу «Теги» (после «Новый тег…» из карточки).
     var scrollToTags = 0
 
+    // Стили саммари
+    var defaultStyle: String { didSet { settings.defaultSummaryStyle = defaultStyle } }
+    private(set) var styles: [SummaryStyle] = []
+    var editingStyle: String?
+    var newStyleId: String?
+    var styleDraftName = ""
+    var styleDraftPrompt = ""
+    var confirmDeleteStyle: String?
+    var scrollToStyles = 0
+
     init(controller: AppController) {
         self.controller = controller
         let s = controller.settings
@@ -99,6 +114,8 @@ final class SettingsModel {
         messenger = s.messenger
         theme = s.theme
         language = s.language
+        summaryLanguage = s.summaryLanguage
+        uiLanguage = UILanguage.chosen
         vocabulary = s.vocabularyText
         model = s.claudeModel
         endReminder = s.endReminderMinutes
@@ -106,8 +123,10 @@ final class SettingsModel {
         micUID = s.micUID
         echo = s.echoCancellation
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        defaultStyle = s.defaultSummaryStyle
         reloadPeople()
         reloadTags()
+        reloadStyles()
     }
 
     private var root: URL { controller.recorder.store.root }
@@ -165,6 +184,56 @@ final class SettingsModel {
         reloadTags()
     }
 
+    // MARK: Стили
+
+    func reloadStyles() {
+        styles = StyleDirectory.load(root: root).styles
+        if StyleDirectory.load(root: root).style(defaultStyle) == nil { defaultStyle = SummaryStyle.businessId }
+    }
+
+    func startEditStyle(_ s: SummaryStyle) {
+        cancelStyle()
+        editingStyle = s.id
+        styleDraftName = s.name
+        styleDraftPrompt = s.prompt
+    }
+
+    func startNewStyle() {
+        cancelStyle()
+        let s = SummaryStyle.custom(name: "", prompt: "")
+        styles.append(s)
+        startEditStyle(s)
+        newStyleId = s.id
+        scrollToStyles += 1
+    }
+
+    var canSaveStyle: Bool {
+        !styleDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !styleDraftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func saveStyle() {
+        guard let id = editingStyle, canSaveStyle else { return }
+        try? controller.recorder.store.saveStyle(SummaryStyle.custom(name: styleDraftName, prompt: styleDraftPrompt, id: id))
+        editingStyle = nil
+        newStyleId = nil
+        reloadStyles()
+    }
+
+    func cancelStyle() {
+        if let n = newStyleId { styles.removeAll { $0.id == n } }
+        newStyleId = nil
+        editingStyle = nil
+        confirmDeleteStyle = nil
+    }
+
+    func deleteStyle(_ id: String) {
+        try? controller.recorder.store.deleteStyle(id)
+        confirmDeleteStyle = nil
+        if defaultStyle == id { defaultStyle = SummaryStyle.businessId }
+        reloadStyles()
+    }
+
     func reloadPeople() {
         people = PeopleDirectory.load(root: controller.recorder.store.root).people.sorted { ($0.isMe == true ? 0 : 1, $0.name) < ($1.isMe == true ? 0 : 1, $1.name) }
     }
@@ -182,7 +251,7 @@ final class SettingsModel {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             launchError = nil
         } catch {
-            launchError = "Не получилось: \(error.localizedDescription)"
+            launchError = String(localized: "Не получилось: \(error.localizedDescription)")
         }
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
@@ -193,12 +262,15 @@ final class SettingsModel {
         let workDir = controller.recorder.store.root.appending(path: ".work/claude")
         Task {
             defer { checkingClaude = false }
-            guard let cli = ClaudeCLI(workDir: workDir) else { claudeStatus = "Claude Code не найден"; return }
+            guard let cli = ClaudeCLI(workDir: workDir) else { claudeStatus = String(localized: "Claude Code не найден"); return }
             do {
                 let s = try await cli.checkSubscription()
-                var text = "Подписка \(s.subscriptionType.capitalized)"
-                if let exp = s.loginExpiresAt { text += ", вход действует до \(Format.day(exp))" }
-                claudeStatus = text
+                let plan = s.subscriptionType.capitalized
+                if let exp = s.loginExpiresAt {
+                    claudeStatus = String(localized: "Подписка \(plan), вход действует до \(UIFormat.day(exp))")
+                } else {
+                    claudeStatus = String(localized: "Подписка \(plan)")
+                }
             } catch {
                 claudeStatus = error.localizedDescription
             }
@@ -234,6 +306,17 @@ struct SettingsView: View {
             Section("Общие") {
                 TextField("Как вас зовут", text: $model.myName)
                 TextField("Чем занимаетесь", text: $model.myRole, prompt: Text("например, продакт-менеджер платформы платежей"))
+                Picker("Язык интерфейса", selection: $model.uiLanguage) {
+                    ForEach(UILanguage.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
+                }
+                if model.uiLanguageChanged {
+                    HStack {
+                        Text("Язык сменится после перезапуска.").foregroundStyle(Theme.sec)
+                        Spacer()
+                        Button("Перезапустить") { UILanguage.relaunch() }
+                            .disabled(model.controller.recorder.phase != .idle)
+                    }
+                }
                 Picker("Тема", selection: $model.theme) {
                     ForEach(AppTheme.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -256,9 +339,15 @@ struct SettingsView: View {
             }
 
             Section {
-                Picker("Язык", selection: $model.language) {
+                Picker("Язык встреч", selection: $model.language) {
+                    Text("Определять автоматически").tag(MeetingLanguage.auto)
                     Text("Русский").tag("ru")
-                    Text("Определять автоматически").tag("auto")
+                    Text("Английский").tag("en")
+                }
+                Picker("Язык саммари", selection: $model.summaryLanguage) {
+                    Text("Как язык встречи").tag(MeetingLanguage.sameAsMeeting)
+                    Text("Русский").tag("ru")
+                    Text("Английский").tag("en")
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Словарь: имена, продукты, термины — по одному на строку")
@@ -276,7 +365,7 @@ struct SettingsView: View {
             } header: {
                 Text("Распознавание")
             } footer: {
-                Text("Словарь и имена приглашённых подсказывают Whisper, как писать редкие слова.").foregroundStyle(Theme.sec)
+                Text("Автоопределение смотрит на первые 30 секунд каждой дорожки. Если язык определился неверно, его можно сменить в карточке встречи — запись распознается заново. Словарь и имена приглашённых подсказывают Whisper, как писать редкие слова.").foregroundStyle(Theme.sec)
             }
 
             Section("Голос и люди") {
@@ -284,7 +373,7 @@ struct SettingsView: View {
                     .onChange(of: model.voice.state) { _, _ in model.reloadPeople() }
                 ForEach(model.people) { p in
                     HStack {
-                        Text(p.isMe == true ? "\(p.name) (вы)" : p.name)
+                        Text(p.isMe == true ? String(localized: "\(p.name) (вы)") : p.name)
                         Spacer()
                         Text(Self.voices(p.voices.count)).foregroundStyle(Theme.sec)
                         if p.isMe != true {
@@ -299,6 +388,8 @@ struct SettingsView: View {
             }
 
             tagsSection
+
+            stylesSection
 
             Section {
                 Picker("Мессенджер", selection: $model.messenger) {
@@ -318,7 +409,7 @@ struct SettingsView: View {
                     Text("Opus — глубже, но быстрее тратит лимит").tag("opus")
                 }
                 HStack {
-                    Text(model.claudeStatus ?? "Работает только по подписке, без API-ключей")
+                    Text(model.claudeStatus ?? String(localized: "Работает только по подписке, без API-ключей"))
                         .foregroundStyle(Theme.sec)
                     Spacer()
                     if model.checkingClaude { ProgressView().controlSize(.small) }
@@ -357,8 +448,88 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onChange(of: model.scrollToTags) { _, _ in withAnimation { proxy.scrollTo("tags", anchor: .top) } }
+        .onChange(of: model.scrollToStyles) { _, _ in withAnimation { proxy.scrollTo("styles", anchor: .top) } }
         }
         .frame(minWidth: 560, minHeight: 480)
+    }
+
+    // MARK: - Стили саммари
+
+    private var stylesSection: some View {
+        Section {
+            Picker("Стиль по умолчанию", selection: $model.defaultStyle) {
+                ForEach(SummaryStyle.presets) { Text($0.uiName).tag($0.id) }
+                if !model.styles.filter({ $0.id != model.newStyleId }).isEmpty {
+                    Divider()
+                    ForEach(model.styles.filter { $0.id != model.newStyleId }) { Text($0.name).tag($0.id) }
+                }
+            }
+            ForEach(model.styles) { s in
+                if model.editingStyle == s.id {
+                    styleEditor
+                } else if model.confirmDeleteStyle == s.id {
+                    HStack {
+                        Text("Удалить стиль «\(s.name)»? Уже собранные саммари останутся.")
+                        Spacer()
+                        Button("Отмена") { model.cancelStyle() }
+                        Button("Удалить", role: .destructive) { model.deleteStyle(s.id) }
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.name)
+                            Text(s.prompt).font(.system(size: 12)).foregroundStyle(Theme.sec).lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Изменить") { model.startEditStyle(s) }.buttonStyle(.borderless)
+                        Button("Удалить") { model.cancelStyle(); model.confirmDeleteStyle = s.id }
+                            .buttonStyle(.borderless).foregroundStyle(Theme.red)
+                    }
+                }
+            }
+            if model.newStyleId == nil {
+                Button("Добавить свой стиль") { model.startNewStyle() }.buttonStyle(.borderless)
+            }
+        } header: {
+            Text("Стили саммари").id("styles")
+        } footer: {
+            Text("Стиль можно сменить в карточке встречи: саммари пересоберётся отдельным вызовом Claude, прежняя версия сохранится. Если по умолчанию стоит не «Деловой», такой вызов будет после каждой встречи.")
+                .foregroundStyle(Theme.sec)
+        }
+    }
+
+    private var styleEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Название")
+                Spacer()
+                TextField("", text: $model.styleDraftName, prompt: Text("Например, «Для руководителя»"))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .frame(width: 300)
+                    .focused($tagNameFocused)
+                    .onAppear { tagNameFocused = true }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Каким должно быть саммари")
+                TextEditor(text: $model.styleDraftPrompt)
+                    .font(.system(size: 13))
+                    .frame(minHeight: 90)
+                    .scrollContentBackground(.hidden)
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
+                Text("Своими словами: что в нём, в каком порядке, какой длины. Например: «Три пункта: что решили, какие риски, что нужно от руководителя».")
+                    .font(.system(size: 12)).foregroundStyle(Theme.sec)
+            }
+            HStack {
+                Spacer()
+                Button("Отмена") { model.cancelStyle() }
+                Button("Сохранить") { model.saveStyle() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.canSaveStyle)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Теги
@@ -422,8 +593,8 @@ struct SettingsView: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help(c.title)
-                    .accessibilityLabel(c.title)
+                    .help(c.uiTitle)
+                    .accessibilityLabel(c.uiTitle)
                 }
             }
             HStack {
@@ -439,29 +610,24 @@ struct SettingsView: View {
 
     /// «3 встречи», «нет встреч».
     static func meetings(_ n: Int) -> String {
-        if n == 0 { return "нет встреч" }
-        let m10 = n % 10, m100 = n % 100
-        let w = m10 == 1 && m100 != 11 ? "встреча" : (2...4).contains(m10) && !(12...14).contains(m100) ? "встречи" : "встреч"
-        return "\(n) \(w)"
+        if n == 0 { return String(localized: "нет встреч") }
+        return plural(n, ru: ("встреча", "встречи", "встреч"), en: ("meeting", "meetings"))
     }
 
     /// «с 1 встречи», «с 5 встреч».
     static func meetingsGenitive(_ n: Int) -> String {
-        let m10 = n % 10, m100 = n % 100
-        return "\(n) " + (m10 == 1 && m100 != 11 ? "встречи" : "встреч")
+        plural(n, ru: ("встречи", "встреч", "встреч"), en: ("meeting", "meetings"))
     }
 
     static func voices(_ n: Int) -> String {
-        n == 0 ? "голоса нет" : n == 1 ? "1 запись голоса" : "записей голоса: \(n)"
+        n == 0 ? String(localized: "голоса нет") : n == 1 ? String(localized: "1 запись голоса") : String(localized: "записей голоса: \(n)")
     }
 
     static func calls(_ n: Int) -> String {
-        let m10 = n % 10, m100 = n % 100
-        let w = m10 == 1 && m100 != 11 ? "вызов" : (2...4).contains(m10) && !(12...14).contains(m100) ? "вызова" : "вызовов"
-        return "\(n) \(w)"
+        plural(n, ru: ("вызов", "вызова", "вызовов"), en: ("call", "calls"))
     }
 
     static func tokens(_ n: Int) -> String {
-        n >= 1000 ? "\(Int((Double(n) / 1000).rounded())) тыс. токенов" : "\(n) токенов"
+        n >= 1000 ? String(localized: "\(Int((Double(n) / 1000).rounded())) тыс. токенов") : String(localized: "\(n) токенов")
     }
 }

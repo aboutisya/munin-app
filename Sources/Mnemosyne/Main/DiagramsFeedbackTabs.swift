@@ -20,7 +20,7 @@ struct DiagramsTab: View {
                             Text(d.title).font(.system(size: 17, weight: .semibold))
                             Spacer()
                             if let png = DiagramRenderer.pngURL(folder: detail.folder, index: i, type: d.type) {
-                                LinkButton("Скопировать PNG") { _ = DiagramRenderer.copyToPasteboard(png) }
+                                LinkButton(String(localized: "Скопировать PNG")) { _ = DiagramRenderer.copyToPasteboard(png) }
                             }
                             LinkButton("Mermaid") {
                                 NSPasteboard.general.clearContents()
@@ -77,6 +77,7 @@ struct MermaidWeb: NSViewRepresentable {
 
     private func load(_ web: WKWebView) {
         let escaped = source.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+        let failed = String(localized: "Не удалось отрисовать:").replacingOccurrences(of: "'", with: "\\'")
         let html = """
         <!doctype html><html><head><meta charset="utf-8">
         <style>
@@ -89,7 +90,7 @@ struct MermaidWeb: NSViewRepresentable {
         <script>
           const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           mermaid.initialize({startOnLoad:false, theme: dark ? 'dark' : 'neutral', fontFamily:'-apple-system'});
-          mermaid.run().catch(e => { document.body.innerHTML = '<div class="err">Не удалось отрисовать: ' + e.message + '</div>'; })
+          mermaid.run().catch(e => { document.body.innerHTML = '<div class="err">\(failed) ' + e.message + '</div>'; })
             .finally(() => setTimeout(() => window.webkit.messageHandlers.size.postMessage(document.body.scrollHeight), 50));
         </script></body></html>
         """
@@ -118,14 +119,14 @@ struct FeedbackTab: View {
             let names = detail.names
             VStack(alignment: .leading, spacing: 36) {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionCap("Тональность")
+                    SectionCap(String(localized: "Тональность"))
                     Text(a.sentiment.overall.label.capitalizedFirst).font(.system(size: 17, weight: .semibold))
                     scale(a.sentiment.overall.score)
                     ForEach(Array(a.sentiment.overall.evidence.enumerated()), id: \.offset) { _, q in quote(q.quote, q.ts) }
                 }
                 if !a.sentiment.perParticipant.isEmpty {
                     VStack(alignment: .leading, spacing: 16) {
-                        SectionCap("Участники")
+                        SectionCap(String(localized: "Участники"))
                         ForEach(Array(a.sentiment.perParticipant.enumerated()), id: \.offset) { _, p in
                             HStack(alignment: .firstTextBaseline, spacing: 16) {
                                 Text(names[p.speaker] ?? p.speaker).font(.system(size: 15, weight: .semibold)).frame(width: 150, alignment: .leading)
@@ -141,14 +142,15 @@ struct FeedbackTab: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
                             Circle().fill(Theme.red).frame(width: 7, height: 7)
-                            Text("Был конфликт" + (a.conflict.kinds.isEmpty ? "" : ": " + a.conflict.kinds.joined(separator: ", ")))
+                            Text(a.conflict.kinds.isEmpty ? String(localized: "Был конфликт")
+                                 : String(localized: "Был конфликт: \(a.conflict.kinds.joined(separator: ", "))"))
                                 .font(.system(size: 15, weight: .semibold))
                         }
                         Text(a.conflict.summary).font(.system(size: 15)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
                     }
                     if !a.conflict.mySpeechFeedback.isEmpty {
                         VStack(alignment: .leading, spacing: 14) {
-                            SectionCap("Что улучшить в моей речи")
+                            SectionCap(String(localized: "Что улучшить в моей речи"))
                             ForEach(Array(a.conflict.mySpeechFeedback.enumerated()), id: \.offset) { _, f in feedback(f) }
                         }
                     }

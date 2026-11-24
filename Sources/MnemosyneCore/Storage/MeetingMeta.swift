@@ -134,6 +134,14 @@ public struct MeetingMeta: Codable, Equatable, Sendable {
     public var usage: [UsageRecord]?
     /// Теги встречи: id из `TagDirectory`.
     public var tags: [UUID]?
+    /// Проект встречи: id из `ProjectDirectory`.
+    public var project: UUID?
+    /// Версии саммари в других стилях (`summaries/<стиль>.md`).
+    public var summaryVersions: [SummaryVersion]?
+    /// Какой стиль показывать; `nil` — «Деловой» (обычный разбор).
+    public var summaryStyle: String?
+    /// Язык распознавания этой встречи (`ru`, `en`, `auto`); `nil` — из настроек.
+    public var language: String?
 
     public init(id: UUID = UUID(), title: String, startedAt: Date, mode: RecordingMode) {
         self.id = id

@@ -13,11 +13,11 @@ final class VoiceEnrollment {
     }
 
     static let seconds: Double = 20
-    static let paragraph = """
+    static let paragraph = String(localized: """
     Сегодня обсуждаем планы на квартал. Сначала коротко пройдёмся по итогам прошлого спринта, \
     потом разберём риски по релизу и договоримся, кто за что отвечает. Если что-то останется \
     непонятным, вернёмся к этому в конце встречи. Предлагаю не затягивать и уложиться в полчаса.
-    """
+    """)
 
     private(set) var state: State = .idle
     private(set) var elapsed: Double = 0
@@ -39,7 +39,7 @@ final class VoiceEnrollment {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.inputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else { state = .failed("Микрофон недоступен"); return }
+        guard format.sampleRate > 0, format.channelCount > 0 else { state = .failed(String(localized: "Микрофон недоступен")); return }
         let url = FileManager.default.temporaryDirectory.appending(path: "mnemosyne-voice-\(UUID().uuidString).caf")
         do {
             let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate, channels: 1, interleaved: false)!
@@ -52,7 +52,7 @@ final class VoiceEnrollment {
             self.file = file
             self.url = url
         } catch {
-            state = .failed("Не удалось начать запись: \(error.localizedDescription)")
+            state = .failed(String(localized: "Не удалось начать запись: \(error.localizedDescription)"))
             return
         }
         state = .recording

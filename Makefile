@@ -27,6 +27,7 @@ app: $(UV_BIN)
 	cp -R Skills $(APP)/Contents/Resources/Skills
 	cp LICENSE THIRD_PARTY_NOTICES.md $(APP)/Contents/Resources/
 	cp Resources/whisper_runner.py $(APP)/Contents/Resources/whisper_runner.py
+	cp -R Resources/ru.lproj Resources/en.lproj $(APP)/Contents/Resources/
 	cp $(UV_BIN) $(APP)/Contents/MacOS/uv
 	@if security find-certificate -c "$(SIGN_ID)" >/dev/null 2>&1; then \
 		codesign --force --sign "$(SIGN_ID)" --identifier local.mnemosyne.uv $(APP)/Contents/MacOS/uv; \

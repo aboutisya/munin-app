@@ -20,6 +20,7 @@ public actor Publisher {
     /// `overwriteEdits` — заменить ручные правки (пользователь сам попросил сформировать заново).
     public func publish(id: UUID, diagrams: [PublicInput.DiagramRef], model: String = "sonnet",
                         messenger: PublicInput.Messenger = .mattermost, useRuText: Bool = true,
+                        summaryLanguage: String = MeetingLanguage.sameAsMeeting,
                         force: Bool = false, overwriteEdits: Bool = false) async throws -> Outcome {
         guard let cli = ClaudeCLI(workDir: store.root.appending(path: ".work/claude")) else { throw ClaudeCLI.CLIError.notInstalled }
         guard let folder = store.locate(id: id) else { throw CocoaError(.fileNoSuchFile) }
@@ -31,10 +32,12 @@ public actor Publisher {
         guard !skillText.isEmpty else { throw ClaudeCLI.CLIError.badOutput("нет скилла ~/.claude/skills/\(Self.skill)") }
         // ru-text необязателен: установлен и включён — вычитываем им, иначе скилл вычитывает сам.
         let ruText = useRuText ? ((try? String(contentsOf: Self.skillsDir.appending(path: "ru-text/SKILL.md"), encoding: .utf8)) ?? "") : ""
-        let proofread = !ruText.isEmpty
+        let language = MeetingLanguage.summary(setting: summaryLanguage, transcriptLanguage: transcript.language)
+        // ru-text — только для русского текста.
+        let proofread = !ruText.isEmpty && language == "ru"
 
         let input = PublicInput.build(analysis, meta: meta, transcript: transcript, diagrams: diagrams,
-                                      messenger: messenger, proofread: proofread)
+                                      messenger: messenger, proofread: proofread, language: language)
         let hash = PublicInput.hash(input: input, skillVersion: AnalysisInput.skillVersion(skillFile: skillText),
                                     ruTextVersion: proofread ? PublicInput.contentVersion(ruText) : "none", model: model)
         if !force, meta.publicHash == hash, FileManager.default.fileExists(atPath: folder.appending(path: Self.publicFile).path) {

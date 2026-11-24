@@ -153,12 +153,12 @@ struct TourRecord: View {
 
     var body: some View {
         TourPage(
-            title: "Запись в одно нажатие",
-            text: "Мунин живёт в строке меню и не мешает звонку. Не нужно звать бота во встречу или давать доступ к экрану.",
+            title: String(localized: "Запись в одно нажатие"),
+            text: String(localized: "Мунин живёт в строке меню и не мешает звонку. Не нужно звать бота во встречу или давать доступ к экрану."),
             points: [
-                ("command", "⌃⌥⌘R или ворон в строке меню — начать и остановить."),
-                ("calendar", "Календарь напомнит о встрече и подставит название и участников."),
-                ("waveform", "Ваш микрофон и звук Zoom, Толка или Meet пишутся отдельными дорожками."),
+                ("command", String(localized: "⌃⌥⌘R или ворон в строке меню — начать и остановить.")),
+                ("calendar", String(localized: "Календарь напомнит о встрече и подставит название и участников.")),
+                ("waveform", String(localized: "Ваш микрофон и звук Zoom, Толка или Meet пишутся отдельными дорожками.")),
             ]
         ) {
             VStack(spacing: 0) {
@@ -213,8 +213,8 @@ struct TourRecord: View {
             .padding(.horizontal, 14).padding(.top, 12)
 
             VStack(alignment: .leading, spacing: 8) {
-                track("Я", seed: 1)
-                track("Собеседники", seed: 7)
+                track(String(localized: "Я"), seed: 1)
+                track(String(localized: "Собеседники"), seed: 7)
             }
             .padding(.horizontal, 14).padding(.top, 12)
 
@@ -276,21 +276,23 @@ struct TourTranscript: View {
     /// 0 — пусто, 1…4 — появляются реплики, 5 — спикеры узнаны по именам, 6 — держим.
     @State private var step = 0
 
+    private static let me = String(localized: "Я")
+
     private let lines: [(ts: String, voice: String, name: String, text: String)] = [
-        ("00:12", "Я", "Я", "Начнём с экрана оплаты, Анна обновила макет."),
-        ("00:19", "Спикер 2", "Анна", "Да, убрала второй шаг — карта теперь сразу на первом."),
-        ("00:34", "Спикер 3", "Павел", "Для бэкенда это ок, но нужен новый статус платежа."),
-        ("00:47", "Я", "Я", "Тогда фиксируем: делаем один шаг, Павел заводит статус."),
+        ("00:12", Self.me, Self.me, String(localized: "Начнём с экрана оплаты, Анна обновила макет.")),
+        ("00:19", String(localized: "Спикер 2"), String(localized: "Анна"), String(localized: "Да, убрала второй шаг — карта теперь сразу на первом.")),
+        ("00:34", String(localized: "Спикер 3"), String(localized: "Павел"), String(localized: "Для бэкенда это ок, но нужен новый статус платежа.")),
+        ("00:47", Self.me, Self.me, String(localized: "Тогда фиксируем: делаем один шаг, Павел заводит статус.")),
     ]
 
     var body: some View {
         TourPage(
-            title: "Расшифровка без облака",
-            text: "Whisper распознаёт речь прямо на Mac. Аудио и транскрипт лежат в вашей папке и никуда не отправляются.",
+            title: String(localized: "Расшифровка без облака"),
+            text: String(localized: "Whisper распознаёт речь прямо на Mac. Аудио и транскрипт лежат в вашей папке и никуда не отправляются."),
             points: [
-                ("person.2.wave.2", "Мунин различает спикеров, узнаёт вас по голосу и подсказывает имена остальных."),
-                ("play.circle", "Клик по таймкоду — и запись играет с этой реплики."),
-                ("lock", "Работает без интернета: расшифровке нужна только модель на диске."),
+                ("person.2.wave.2", String(localized: "Мунин различает спикеров, узнаёт вас по голосу и подсказывает имена остальных.")),
+                ("play.circle", String(localized: "Клик по таймкоду — и запись играет с этой реплики.")),
+                ("lock", String(localized: "Работает без интернета: расшифровке нужна только модель на диске.")),
             ]
         ) {
             HStack(spacing: 18) {
@@ -331,8 +333,8 @@ struct TourTranscript: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(l.ts).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.sec)
             Text(named ? l.name : l.voice)
-                .font(.system(size: 12, weight: l.name == "Я" ? .bold : .semibold))
-                .foregroundStyle(named || l.name == "Я" ? Theme.ink : Theme.sec)
+                .font(.system(size: 12, weight: l.name == Self.me ? .bold : .semibold))
+                .foregroundStyle(named || l.name == Self.me ? Theme.ink : Theme.sec)
                 .contentTransition(.opacity)
                 .frame(width: 62, alignment: .leading)
             Text(l.text).font(.system(size: 12)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -349,12 +351,12 @@ struct TourAnalysis: View {
 
     var body: some View {
         TourPage(
-            title: "Саммари, решения и задачи",
-            text: "Claude Code разбирает транскрипт по вашей подписке, без API-ключей: о чём договорились, кто что делает и к какому сроку.",
+            title: String(localized: "Саммари, решения и задачи"),
+            text: String(localized: "Claude Code разбирает транскрипт по вашей подписке, без API-ключей: о чём договорились, кто что делает и к какому сроку."),
             points: [
-                ("checklist", "Задачи со всех встреч собираются в один список, их можно отмечать."),
-                ("point.3.connected.trianglepath.dotted", "Схемы процессов и решений — отдельной вкладкой, картинкой."),
-                ("text.bubble", "Обратная связь по вашей речи: тональность и что улучшить."),
+                ("checklist", String(localized: "Задачи со всех встреч собираются в один список, их можно отмечать.")),
+                ("point.3.connected.trianglepath.dotted", String(localized: "Схемы процессов и решений — отдельной вкладкой, картинкой.")),
+                ("text.bubble", String(localized: "Обратная связь по вашей речи: тональность и что улучшить.")),
             ]
         ) {
             HStack(alignment: .top, spacing: 14) {
@@ -374,16 +376,16 @@ struct TourAnalysis: View {
                 Text(step == 0 ? "Claude анализирует встречу…" : "Дизайн-ревью оплаты")
                     .font(.system(size: 13, weight: .semibold)).contentTransition(.opacity)
             }
-            section("Коротко", on: step >= 1) {
+            section(String(localized: "Коротко"), on: step >= 1) {
                 Text("Оплата сокращается до одного шага, нужен новый статус платежа.").font(.system(size: 12))
             } placeholder: { VStack(alignment: .leading, spacing: 5) { Bar(width: 260); Bar(width: 180) } }
-            section("Решения", on: step >= 2) {
+            section(String(localized: "Решения"), on: step >= 2) {
                 Text("— Карта вводится на первом шаге").font(.system(size: 12))
             } placeholder: { Bar(width: 200) }
-            section("Задачи", on: step >= 3) {
+            section(String(localized: "Задачи"), on: step >= 3) {
                 VStack(alignment: .leading, spacing: 5) {
-                    task("Завести статус «ожидает 3DS»", who: "Павел · до пт", done: step >= 5)
-                    task("Обновить макет в Figma", who: "Анна · завтра", done: false)
+                    task(String(localized: "Завести статус «ожидает 3DS»"), who: String(localized: "Павел · до пт"), done: step >= 5)
+                    task(String(localized: "Обновить макет в Figma"), who: String(localized: "Анна · завтра"), done: false)
                 }
             } placeholder: { VStack(alignment: .leading, spacing: 5) { Bar(width: 230); Bar(width: 190) } }
         }
@@ -424,9 +426,9 @@ struct TourAnalysis: View {
                 }
                 .trim(from: 0, to: step >= 4 ? 1 : 0)
                 .stroke(Theme.sec, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-                node("Карта", at: CGPoint(x: 71, y: 14), on: step >= 4)
-                node("Оплата", at: CGPoint(x: 71, y: 79), on: step >= 4)
-                node("Успех", at: CGPoint(x: 34, y: 145), on: step >= 4)
+                node(String(localized: "Карта"), at: CGPoint(x: 71, y: 14), on: step >= 4)
+                node(String(localized: "Оплата"), at: CGPoint(x: 71, y: 79), on: step >= 4)
+                node(String(localized: "Успех"), at: CGPoint(x: 34, y: 145), on: step >= 4)
                 node("3DS", at: CGPoint(x: 108, y: 145), on: step >= 4)
             }
             .frame(width: 142, height: 160)
@@ -455,12 +457,12 @@ struct TourShare: View {
 
     var body: some View {
         TourPage(
-            title: "Итоги — коллегам за секунду",
-            text: "Для чата Мунин готовит отдельную версию: без личных заметок, вычитанную и размеченную под ваш мессенджер.",
+            title: String(localized: "Итоги — коллегам за секунду"),
+            text: String(localized: "Для чата Мунин готовит отдельную версию: без личных заметок, вычитанную и размеченную под ваш мессенджер."),
             points: [
-                ("doc.on.doc", "Одна кнопка копирует текст, схемы вставляются картинками."),
-                ("magnifyingglass", "Поиск по всем встречам находит, кто и когда это сказал."),
-                ("folder", "Всё хранится в обычной папке: markdown и аудио, их легко забрать."),
+                ("doc.on.doc", String(localized: "Одна кнопка копирует текст, схемы вставляются картинками.")),
+                ("magnifyingglass", String(localized: "Поиск по всем встречам находит, кто и когда это сказал.")),
+                ("folder", String(localized: "Всё хранится в обычной папке: markdown и аудио, их легко забрать.")),
             ]
         ) {
             HStack(alignment: .center, spacing: 16) {
@@ -505,7 +507,7 @@ struct TourShare: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Spacer(minLength: 0)
-                bubble(name: "Павел")
+                bubble(name: String(localized: "Павел"))
                 if step >= 3 {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Вы").font(.system(size: 10, weight: .semibold))

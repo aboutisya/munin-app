@@ -18,7 +18,9 @@ final class AppController {
     @ObservationIgnored private lazy var settingsWindow = SettingsWindowController(controller: self)
     @ObservationIgnored private lazy var onboardingWindow = OnboardingWindowController(controller: self)
 
-    func showSettings(newTag: Bool = false, scrollToTags: Bool = false) { settingsWindow.show(newTag: newTag, scrollToTags: scrollToTags) }
+    func showSettings(newTag: Bool = false, scrollToTags: Bool = false, newStyle: Bool = false) {
+        settingsWindow.show(newTag: newTag, scrollToTags: scrollToTags, newStyle: newStyle)
+    }
     func showOnboarding() { onboardingWindow.show() }
 
     /// Пока открыто хоть одно обычное окно, приложение в Dock и ⌘Tab; закрылось последнее — снова только в строке меню.
@@ -40,6 +42,8 @@ final class AppController {
     private(set) var candidates: [CalendarEventInfo] = []
     /// Событие, выбранное для следующей записи. `nil` — первое из кандидатов.
     var chosenEventId: String?
+    /// Проект, открытый в главном окне: новая запись попадает в него.
+    var targetProject: UUID?
     /// Пользователь явно выбрал «Без события».
     var noEventChosen = false
 
@@ -160,7 +164,7 @@ final class AppController {
 
     func startRecording(event: CalendarEventInfo?) {
         Task {
-            await recorder.start(event: event)
+            await recorder.start(event: event, project: targetProject)
             endReminderAt = nil
             endNotifiedFor = nil
             noEventChosen = false
@@ -179,9 +183,12 @@ final class AppController {
         notifications.removeEndReminder()
         Task {
             let folder = await recorder.stop()
+            // UUID берём до `saved`: там папка может переименоваться (новое название или событие),
+            // и чтение по старому пути молча не находило встречу — она не попадала в очередь.
+            let id = folder.flatMap { try? recorder.store.read($0) }?.id
             model.saved(folder: folder, error: recorder.lastError)
             // Обработка стартует сразу, не дожидаясь названия: она идёт по UUID встречи.
-            if let folder, let meta = try? recorder.store.read(folder) { queue.enqueue(meta.id) }
+            if let id { queue.enqueue(id) }
         }
     }
 
@@ -196,6 +203,8 @@ final class AppController {
     // MARK: - Напоминания
 
     private func tick() {
+        // Страховка: сохранённая, но не поставленная в очередь встреча подхватывается сама.
+        if recorder.phase == .idle { queue.enqueueStranded() }
         if settings.deleteOldAudio, Date().timeIntervalSince(lastPurge ?? .distantPast) > 6 * 3600 { purgeOldAudioIfEnabled() }
         refreshCandidates()
         let now = Date()

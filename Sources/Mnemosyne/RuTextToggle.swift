@@ -20,12 +20,12 @@ struct RuTextToggle: View {
                 .onChange(of: on) { _, v in settings.useRuText = v }
             HStack(spacing: 6) {
                 Text(installed
-                     ? "Сторонний скилл редактуры русского текста. Текст чище, но встреча обходится примерно на 25 тыс. токенов дороже, плюс 50 тыс. читаются из кэша."
-                     : "Не установлен — Claude вычитает текст сам. ru-text — сторонний скилл редактуры русского текста.")
+                     ? String(localized: "Сторонний скилл редактуры русского текста. Текст чище, но встреча обходится примерно на 25 тыс. токенов дороже, плюс 50 тыс. читаются из кэша.")
+                     : String(localized: "Не установлен — Claude вычитает текст сам. ru-text — сторонний скилл редактуры русского текста."))
                     .font(.system(size: 12)).foregroundStyle(Theme.sec)
                     .fixedSize(horizontal: false, vertical: true)
                 if !installed {
-                    LinkButton("Что это") { NSWorkspace.shared.open(URL(string: "https://ru-text.org")!) }
+                    LinkButton(String(localized: "Что это")) { NSWorkspace.shared.open(URL(string: "https://ru-text.org")!) }
                 }
             }
         }

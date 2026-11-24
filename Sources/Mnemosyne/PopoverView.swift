@@ -53,21 +53,21 @@ final class PopoverModel {
 
     /// «Микрофон MacBook · AirPods Pro»
     var deviceCaption: String {
-        let mic = recorder.plannedMic.map(Self.micTitle) ?? "Системный микрофон"
+        let mic = recorder.plannedMic.map(Self.micTitle) ?? String(localized: "Системный микрофон")
         var parts = [mic, recorder.devices.outputTitle]
-        if recorder.plannedVoiceProcessing { parts.append("эхоподавление") }
+        if recorder.plannedVoiceProcessing { parts.append(String(localized: "эхоподавление")) }
         return parts.joined(separator: " · ")
     }
 
     var recordingCaption: String {
         var parts = [recorder.devices.outputTitle]
-        if recorder.voiceProcessingActive { parts.append("эхоподавление включено") }
+        if recorder.voiceProcessingActive { parts.append(String(localized: "эхоподавление включено")) }
         else if let mic = recorder.micName { parts.append(mic) }
         return parts.joined(separator: " · ")
     }
 
     static func micTitle(_ device: AudioDevice) -> String {
-        device.isBuiltIn ? "Микрофон MacBook" : device.name
+        device.isBuiltIn ? String(localized: "Микрофон MacBook") : device.name
     }
 }
 
@@ -124,7 +124,7 @@ struct PopoverView: View {
         if let running = analysis.running, let title = model.recent.first(where: { $0.meta.id == running })?.meta.title {
             Divider()
             VStack(alignment: .leading, spacing: 4) {
-                Caption("Саммари · Claude")
+                Caption(String(localized: "Саммари · Claude"))
                 HStack {
                     Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                     Spacer()
@@ -150,17 +150,17 @@ struct PopoverView: View {
 
         Divider()
         VStack(alignment: .leading, spacing: 10) {
-            MenuRow(title: "Открыть Мунин", detail: "⌘O") {
+            MenuRow(title: String(localized: "Открыть Мунин"), detail: "⌘O") {
                 close()
                 model.controller.openMain()
             }
             .keyboardShortcut("o")
-            MenuRow(title: "Настройки…", detail: "⌘,") {
+            MenuRow(title: String(localized: "Настройки…"), detail: "⌘,") {
                 close()
                 model.controller.showSettings()
             }
             .keyboardShortcut(",")
-            MenuRow(title: "Выйти", detail: "⌘Q") { NSApp.terminate(nil) }
+            MenuRow(title: String(localized: "Выйти"), detail: "⌘Q") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         }
     }
@@ -170,20 +170,20 @@ struct PopoverView: View {
             Picker("Микрофон", selection: $model.micUID) {
                 Text("Авто: микрофон MacBook").tag(String?.none)
                 ForEach(recorder.devices.inputs) { device in
-                    Text(device.isBluetooth ? "\(device.name) — хуже качество" : device.name)
+                    Text(device.isBluetooth ? String(localized: "\(device.name) — хуже качество") : device.name)
                         .tag(Optional(device.uid))
                 }
             }
             Picker("Режим", selection: $model.modeOverride) {
                 Text("Авто: по событию").tag(RecordingMode?.none)
-                ForEach(RecordingMode.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
+                ForEach(RecordingMode.allCases, id: \.self) { Text($0.uiTitle).tag(Optional($0)) }
             }
             Toggle("Эхоподавление при динамиках", isOn: $model.echoCancellation)
             if !model.hotKeyAvailable {
                 Text("⌃⌥⌘R занят другим приложением")
             }
         } label: {
-            Text(model.deviceCaption + (model.modeOverride.map { " · \($0.title.lowercased())" } ?? ""))
+            Text(model.deviceCaption + (model.modeOverride.map { " · \($0.uiTitle.lowercased())" } ?? ""))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -198,14 +198,14 @@ struct PopoverView: View {
         let controller = model.controller
         VStack(alignment: .leading, spacing: 4) {
             if let event = controller.plannedEvent {
-                Caption("Сейчас · \(PopoverModel.eventTime(event))")
+                Caption(String(localized: "Сейчас · \(PopoverModel.eventTime(event))"))
                 Text(event.title).font(.system(size: 16, weight: .semibold)).lineLimit(2)
             } else {
-                Caption(controller.calendar.access == .denied ? "Нет доступа к календарю" : "Без события")
+                Caption(controller.calendar.access == .denied ? String(localized: "Нет доступа к календарю") : String(localized: "Без события"))
                 Text("Новая встреча").font(.system(size: 16, weight: .semibold))
             }
             if !controller.candidates.isEmpty {
-                EventMenu(label: controller.plannedEvent == nil ? "выбрать событие" : "изменить",
+                EventMenu(label: controller.plannedEvent == nil ? String(localized: "выбрать событие") : String(localized: "изменить"),
                           events: controller.candidates, selected: controller.plannedEvent?.id,
                           choose: controller.choose)
             }
@@ -213,15 +213,16 @@ struct PopoverView: View {
     }
 
     private func detail(for meta: MeetingMeta) -> String {
+        if let label = ProcessingStage.listLabel(meta, controller: model.controller) { return label }
         switch meta.status {
-        case .recording: return "прервана"
-        case .failed: return "ошибка · повторить"
+        case .recording: return String(localized: "прервана")
+        case .failed: return String(localized: "ошибка · повторить")
         case .saved, .transcribing, .diarizing, .merging:
-            return model.controller.queue.current?.id == meta.id ? "обработка" : "в очереди"
-        case .analyzing: return "саммари"
+            return model.controller.queue.current?.id == meta.id ? String(localized: "обработка") : String(localized: "в очереди")
+        case .analyzing: return String(localized: "саммари")
         case .transcribed:
-            return model.controller.analysis.isQueued(meta.id) ? "ждёт анализа" : Format.day(meta.startedAt)
-        default: return Format.day(meta.startedAt)
+            return model.controller.analysis.isQueued(meta.id) ? String(localized: "ждёт анализа") : UIFormat.day(meta.startedAt)
+        default: return UIFormat.day(meta.startedAt)
         }
     }
 
@@ -289,7 +290,7 @@ struct PopoverView: View {
         HStack {
             Text("Событие").font(.system(size: 13))
             Spacer()
-            EventMenu(label: (recorder.event?.title ?? "Без события") + " ▾",
+            EventMenu(label: (recorder.event?.title ?? String(localized: "Без события")) + " ▾",
                       events: model.controller.recordingAlternatives, selected: recorder.event?.id,
                       choose: { recorder.bind(event: $0) })
         }
@@ -313,7 +314,7 @@ struct PopoverView: View {
             Text("Сохраняем запись").font(.system(size: 16, weight: .semibold))
         }
         ProgressView().progressViewStyle(.linear)
-        Caption("Сжимаем дорожки в m4a. Обычно несколько секунд.")
+        Caption(String(localized: "Сжимаем дорожки в m4a. Обычно несколько секунд."))
     }
 }
 
@@ -400,30 +401,30 @@ struct ProcessingBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Caption("Обработка · \(Format.duration(current.meetingSeconds))")
+                Caption(String(localized: "Обработка · \(UIFormat.duration(current.meetingSeconds))"))
                 Text(current.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             }
-            step("Транскрипт", state: transcriptState)
+            step(String(localized: "Транскрипт"), state: transcriptState)
             if current.progress.step == .transcribe || current.progress.step == .prepare {
                 ProgressView(value: current.progress.fraction).progressViewStyle(.linear).tint(.primary)
             }
-            step("Спикеры", state: speakersState)
-            if let remaining { Caption(remaining + ". Пришлём уведомление.") }
+            step(String(localized: "Спикеры"), state: speakersState)
+            if let remaining { Caption(String(localized: "\(remaining). Пришлём уведомление.")) }
         }
     }
 
     private var transcriptState: String {
         switch current.progress.step {
-        case .prepare: "подготовка"
+        case .prepare: String(localized: "подготовка")
         case .transcribe: "\(Int(current.progress.fraction * 100))%"
-        default: "готово"
+        default: String(localized: "готово")
         }
     }
 
     private var speakersState: String {
         switch current.progress.step {
-        case .merge: "готово"
-        case .diarize: "идёт"
+        case .merge: String(localized: "готово")
+        case .diarize: String(localized: "идёт")
         default: ""
         }
     }
@@ -432,7 +433,7 @@ struct ProcessingBlock: View {
         HStack {
             Text(title)
             Spacer()
-            Text(state).foregroundStyle(state.isEmpty || state == "готово" ? .secondary : .primary)
+            Text(state).foregroundStyle(state.isEmpty || state == String(localized: "готово") ? .secondary : .primary)
         }
         .font(.system(size: 13))
         .foregroundStyle(state.isEmpty ? .secondary : .primary)
@@ -448,7 +449,7 @@ struct LimitBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Caption("Лимит подписки Claude")
+                Caption(String(localized: "Лимит подписки Claude"))
                 Text(count == 1 ? "Встреча ждёт анализа" : "Встреч ждут анализа: \(count)")
                     .font(.system(size: 14, weight: .semibold))
             }

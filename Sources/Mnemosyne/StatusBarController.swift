@@ -69,7 +69,7 @@ final class StatusBarController: NSObject {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Мунин"
+        image.accessibilityDescription = String(localized: "Мунин")
         return image
     }
 

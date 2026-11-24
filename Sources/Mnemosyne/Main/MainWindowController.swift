@@ -28,7 +28,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
                          backing: .buffered, defer: false)
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
-        w.title = "Мунин"
+        w.title = String(localized: "Мунин")
         w.minSize = NSSize(width: 960, height: 600)
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: MainView(library: library))

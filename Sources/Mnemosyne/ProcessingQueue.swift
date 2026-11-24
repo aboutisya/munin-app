@@ -40,6 +40,16 @@ final class ProcessingQueue {
         }
     }
 
+    /// Встречи в статусе `saved`, которых нет ни в работе, ни в очереди. Такое бывает,
+    /// если постановка в очередь сорвалась; вызывается по таймеру.
+    func enqueueStranded() {
+        for (_, meta) in store.list().reversed() where meta.status == .saved
+            && current?.id != meta.id && !pending.contains(meta.id) {
+            Log.app.info("stranded meeting enqueued: \(meta.id, privacy: .public)")
+            enqueue(meta.id)
+        }
+    }
+
     /// Повторить после ошибки.
     func retry(_ id: UUID) {
         _ = try? store.update(id: id) { $0.status = .saved }
@@ -51,7 +61,7 @@ final class ProcessingQueue {
         guard let c = current, c.progress.step == .transcribe, c.progress.fraction > 0.05 else { return nil }
         let elapsed = Date().timeIntervalSince(c.startedAt)
         let left = elapsed / c.progress.fraction * (1 - c.progress.fraction)
-        return left < 60 ? "Меньше минуты" : "Около \(Int((left / 60).rounded(.up))) мин"
+        return left < 60 ? String(localized: "Меньше минуты") : String(localized: "Около \(Int((left / 60).rounded(.up))) мин")
     }
 
     private func runNext() {

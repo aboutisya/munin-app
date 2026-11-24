@@ -31,10 +31,19 @@ final class AnalysisQueue {
     /// Какой шаг сейчас идёт у `running`: `analyze` или `public`.
     private(set) var runningStep: String?
 
+    // MARK: Пересборка в другом стиле — своя очередь, по одной встрече за раз.
+    struct StyleJob: Equatable { var id: UUID; var style: SummaryStyle }
+    private(set) var styleJobs: [StyleJob] = []
+    private(set) var styleRunning: StyleJob?
+    /// Последняя ошибка пересборки по встрече — показываем в карточке.
+    private(set) var styleErrors: [UUID: String] = [:]
+    @ObservationIgnored private let restyler: Restyler
+
     init(store: MeetingStore) {
         self.store = store
         analyzer = Analyzer(store: store)
         publisher = Publisher(store: store)
+        restyler = Restyler(store: store)
         file = store.root.appending(path: ".queue.json")
         state = AnalysisQueueState.load(from: file)
     }
@@ -132,18 +141,20 @@ final class AnalysisQueue {
                 let overwrite = forcedPublic.remove(id) != nil
                 _ = try await publisher.publish(id: id, diagrams: diagrams, model: model, messenger: AppSettings().messenger,
                                                 useRuText: AppSettings().useRuText,
+                                                summaryLanguage: AppSettings().summaryLanguage,
                                                 force: overwrite, overwriteEdits: overwrite)
                 state.remove(id)
                 onEvent?(.done(id: id, title: currentTitle(id) ?? meta.title))
+                if needsAnalysis { applyDefaultStyle(id) }
             } catch ClaudeCLI.CLIError.usageLimit(let resetAt, _) {
                 let retry = state.hitLimit(on: id, resetAt: resetAt, now: Date())
-                markStep(id, step, .queuedLimit, error: "Лимит подписки, повтор в \(Self.time(retry))",
+                markStep(id, step, .queuedLimit, error: "Лимит подписки, повтор в \(retry.formatted(.dateTime.hour().minute().locale(Locale(identifier: "ru_RU"))))",
                          status: step == "analyze" ? .transcribed : nil)
                 onEvent?(.limit(title: currentTitle(id) ?? meta.title, retryAt: retry))
             } catch {
                 state.remove(id)
                 forcedPublic.remove(id)
-                let text = step == "public" ? "Публичное саммари: \(error.localizedDescription)" : error.localizedDescription
+                let text = step == "public" ? String(localized: "Публичное саммари: \(error.localizedDescription)") : error.localizedDescription
                 markStep(id, step, .failed, error: error.localizedDescription, status: step == "analyze" ? .failed : nil)
                 onEvent?(.failed(id: id, title: currentTitle(id) ?? meta.title, error: text))
             }
@@ -151,6 +162,50 @@ final class AnalysisQueue {
             running = nil
             runningStep = nil
             runNext()
+        }
+    }
+
+    /// Пересобрать саммари встречи в стиле. Уже идущую или ждущую пересборку не дублируем.
+    func restyle(_ id: UUID, style: SummaryStyle) {
+        guard !style.isBusiness else { return }
+        styleErrors[id] = nil
+        let job = StyleJob(id: id, style: style)
+        guard styleRunning != job, !styleJobs.contains(job) else { return }
+        styleJobs.append(job)
+        runNextStyle()
+    }
+
+    func restyling(_ id: UUID) -> SummaryStyle? {
+        if styleRunning?.id == id { return styleRunning?.style }
+        return styleJobs.first { $0.id == id }?.style
+    }
+
+    /// После нового разбора: если по умолчанию выбран не «Деловой», сразу пересобираем в нём.
+    private func applyDefaultStyle(_ id: UUID) {
+        let styleId = AppSettings().defaultSummaryStyle
+        guard styleId != SummaryStyle.businessId,
+              let style = StyleDirectory.load(root: store.root).style(styleId) else { return }
+        restyle(id, style: style)
+    }
+
+    private func runNextStyle() {
+        guard styleRunning == nil, !styleJobs.isEmpty else { return }
+        let job = styleJobs.removeFirst()
+        styleRunning = job
+        let restyler = self.restyler, model = self.model
+        Task {
+            do {
+                _ = try await restyler.restyle(id: job.id, style: job.style, model: model, owner: AppSettings().owner)
+            } catch ClaudeCLI.CLIError.usageLimit(let resetAt, _) {
+                styleErrors[job.id] = resetAt.map { String(localized: "Лимит подписки Claude. Попробуйте после \(Self.time($0)).") }
+                    ?? String(localized: "Лимит подписки Claude.")
+                markStep(job.id, "style", .failed, error: "лимит подписки", status: nil)
+            } catch {
+                styleErrors[job.id] = error.localizedDescription
+                markStep(job.id, "style", .failed, error: error.localizedDescription, status: nil)
+            }
+            styleRunning = nil
+            runNextStyle()
         }
     }
 
@@ -177,6 +232,6 @@ final class AnalysisQueue {
     }
 
     static func time(_ date: Date) -> String {
-        date.formatted(.dateTime.hour().minute().locale(Locale(identifier: "ru_RU")))
+        date.formatted(.dateTime.hour().minute().locale(UILanguage.locale))
     }
 }

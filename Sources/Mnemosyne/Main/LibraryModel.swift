@@ -17,6 +17,17 @@ final class LibraryModel {
     enum Tab: String, CaseIterable, Identifiable {
         case summary = "Саммари", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек", notes = "Мои заметки"
         var id: String { rawValue }
+        /// Название вкладки в языке интерфейса (`rawValue` — стабильный идентификатор).
+        var title: String {
+            switch self {
+            case .summary: String(localized: "Саммари")
+            case .publicText: String(localized: "Публичное")
+            case .transcript: String(localized: "Транскрипт")
+            case .diagrams: String(localized: "Диаграммы")
+            case .feedback: String(localized: "Тональность и фидбек")
+            case .notes: String(localized: "Мои заметки")
+            }
+        }
     }
 
     enum Section { case meetings, tasks }
@@ -33,6 +44,17 @@ final class LibraryModel {
     private(set) var tagDirectory = TagDirectory(tags: [])
     /// Фильтр списка по тегам: встреча показывается, если у неё есть все выбранные.
     var tagFilter: Set<UUID> = []
+    /// Справочник проектов, перечитывается вместе со списком.
+    private(set) var projectDirectory = ProjectDirectory(projects: [])
+    /// Открытый проект: список показывает только его встречи, новая запись попадает в него.
+    var projectFilter: UUID? {
+        didSet {
+            controller.targetProject = projectFilter
+            if projectFilter != nil { section = .meetings }
+            if let id = selectedId, let first = groups.first?.items.first,
+               !groups.contains(where: { $0.items.contains { $0.id == id } }) { selectedId = first.id }
+        }
+    }
 
     let controller: AppController
     let player = PlayerModel()
@@ -70,8 +92,13 @@ final class LibraryModel {
             tagDirectory = dir
             tagFilter.formIntersection(dir.tags.map(\.id))
         }
+        let projects = ProjectDirectory.load(root: store.root)
+        if projects != projectDirectory {
+            projectDirectory = projects
+            if let p = projectFilter, projects.project(p) == nil { projectFilter = nil }
+        }
         let list = store.list().map { Item(folder: $0.folder, meta: $0.meta) }
-        let signature = list.map { "\($0.meta.tags ?? [])\($0.meta.id)\($0.meta.title)\($0.meta.status.rawValue)\($0.folder.lastPathComponent)\($0.meta.analysisHash ?? "")\($0.meta.publicHash ?? "")\($0.meta.steps?["public"]?.status.rawValue ?? "")\($0.meta.steps?["analyze"]?.status.rawValue ?? "")" }.joined()
+        let signature = list.map { "\($0.meta.project?.uuidString ?? "")\($0.meta.tags ?? [])\($0.meta.id)\($0.meta.title)\($0.meta.status.rawValue)\($0.folder.lastPathComponent)\($0.meta.analysisHash ?? "")\($0.meta.publicHash ?? "")\($0.meta.steps?["public"]?.status.rawValue ?? "")\($0.meta.steps?["analyze"]?.status.rawValue ?? "")\($0.meta.summaryStyle ?? "")\($0.meta.summaryVersions?.map(\.style) ?? [])\($0.meta.steps?["style"]?.finishedAt?.timeIntervalSince1970 ?? 0)" }.joined()
         guard signature != lastSignature else { return }
         lastSignature = signature
         items = list
@@ -84,8 +111,10 @@ final class LibraryModel {
     /// Встречи, отфильтрованные поиском, сгруппированные «Сегодня / Эта неделя / Ранее».
     var groups: [(title: String, items: [Item])] {
         let found = hits.map { hits in hits.compactMap { h in items.first { $0.id == h.id } } } ?? items
-        let visible = found.filter { TagDirectory.matches($0.meta.tags, selected: tagFilter) }
-        if hits != nil { return [("Найдено", visible)] }
+        let visible = found.filter {
+            TagDirectory.matches($0.meta.tags, selected: tagFilter) && (projectFilter == nil || $0.meta.project == projectFilter)
+        }
+        if hits != nil { return [(String(localized: "Найдено"), visible)] }
         let cal = Calendar.current
         let now = Date()
         var today: [Item] = [], week: [Item] = [], earlier: [Item] = []
@@ -94,10 +123,54 @@ final class LibraryModel {
             else if let d = cal.dateComponents([.day], from: item.meta.startedAt, to: now).day, d < 7 { week.append(item) }
             else { earlier.append(item) }
         }
-        return [("Сегодня", today), ("Эта неделя", week), ("Ранее", earlier)].filter { !$0.1.isEmpty }
+        return [(String(localized: "Сегодня"), today), (String(localized: "Эта неделя"), week), (String(localized: "Ранее"), earlier)].filter { !$0.1.isEmpty }
     }
 
     func tags(of item: Item) -> [MeetingTag] { tagDirectory.tags(for: item.meta.tags) }
+
+    // MARK: - Проекты
+
+    var projects: [MeetingProject] { projectDirectory.sorted }
+
+    func count(in project: UUID) -> Int { items.filter { $0.meta.project == project }.count }
+
+    func project(of meta: MeetingMeta) -> MeetingProject? { projectDirectory.project(meta.project) }
+
+    /// Создать проект и сразу открыть его. Если передана встреча — перенести её туда.
+    func addProject(named name: String, moving meeting: UUID? = nil) {
+        guard let p = try? store.addProject(named: name) else { return }
+        if let meeting { try? store.setProject(p.id, meeting: meeting) }
+        refresh()
+        projectFilter = p.id
+    }
+
+    func renameProject(_ id: UUID, to name: String) {
+        try? store.renameProject(id, to: name)
+        refresh()
+    }
+
+    func deleteProject(_ id: UUID) {
+        try? store.deleteProject(id)
+        if projectFilter == id { projectFilter = nil }
+        refresh()
+    }
+
+    /// Распознать запись заново на другом языке. Транскрипт, разбор и версии в других стилях соберутся заново.
+    func retranscribe(_ id: UUID, language: String) {
+        _ = try? store.update(id: id) { m in
+            m.language = language
+            m.summaryVersions = nil
+            m.summaryStyle = nil
+            m.status = .saved
+        }
+        controller.queue.enqueue(id)
+        refresh()
+    }
+
+    func setProject(_ project: UUID?, meeting: UUID) {
+        try? store.setProject(project, meeting: meeting)
+        refresh()
+    }
 
     func toggleFilter(_ id: UUID) {
         if tagFilter.contains(id) { tagFilter.remove(id) } else { tagFilter.insert(id) }
@@ -189,6 +262,8 @@ struct MeetingDetail {
     var publicSummary: String?
     /// Исходный ответ модели: сравниваем с `publicSummary`, чтобы показать «ваши правки».
     var publicGenerated: String?
+    /// Саммари в выбранном стиле; `nil` — показываем обычный разбор («Деловой»).
+    var styledSummary: String?
 
     init(item: LibraryModel.Item, editing: MeetingEditing) {
         folder = item.folder
@@ -197,6 +272,7 @@ struct MeetingDetail {
         analysis = editing.analysis(item.folder)
         publicSummary = try? String(contentsOf: item.folder.appending(path: Publisher.publicFile), encoding: .utf8)
         publicGenerated = try? String(contentsOf: item.folder.appending(path: Publisher.generatedFile), encoding: .utf8)
+        styledSummary = editing.store.activeStyledSummary(item.folder, meta: item.meta)
     }
 
     /// Код спикера в анализе (`Я`, `С1`) → имя для показа.
@@ -213,19 +289,19 @@ struct MeetingDetail {
     var dateLine: String {
         let cal = Calendar.current
         let day: String
-        if cal.isDateInToday(meta.startedAt) { day = "Сегодня" }
-        else if cal.isDateInYesterday(meta.startedAt) { day = "Вчера" }
-        else { day = meta.startedAt.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "ru_RU"))) }
+        if cal.isDateInToday(meta.startedAt) { day = String(localized: "Сегодня") }
+        else if cal.isDateInYesterday(meta.startedAt) { day = String(localized: "Вчера") }
+        else { day = meta.startedAt.formatted(.dateTime.day().month(.wide).locale(UILanguage.locale)) }
         var parts = [day]
-        let time = { (d: Date) in d.formatted(.dateTime.hour().minute().locale(Locale(identifier: "ru_RU"))) }
+        let time = { (d: Date) in d.formatted(.dateTime.hour().minute().locale(UILanguage.locale)) }
         if let end = meta.endedAt { parts.append("\(time(meta.startedAt))–\(time(end))") } else { parts.append(time(meta.startedAt)) }
-        if let d = meta.durationSeconds { parts.append(Format.duration(d)) }
+        if let d = meta.durationSeconds { parts.append(UIFormat.duration(d)) }
         return parts.joined(separator: " · ")
     }
 
     /// Все люди встречи для аватаров: я, участники события, названные спикеры.
     var people: [String] {
-        var names = ["Я"]
+        var names = [String(localized: "Я")]
         for p in meta.participants ?? [] where !p.isMe { names.append(p.displayName) }
         for s in transcript?.speakers ?? [] where s.id != "me" && s.nameSource != "generic" && !names.contains(s.label) {
             names.append(s.label)

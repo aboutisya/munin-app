@@ -13,6 +13,7 @@ struct MeetingView: View {
     @State private var rebindOpen = false
     @State private var copied = false
     @State private var copiedSummary = false
+    @State private var retranscribeTo: String?
     @Namespace private var tabLine
 
     var body: some View {
@@ -107,6 +108,8 @@ struct MeetingView: View {
     private var tagsRow: some View {
         let mine = library.tagDirectory.tags(for: detail.meta.tags)
         return FlowLayout(spacing: 6) {
+            ProjectMenu(library: library, meta: detail.meta)
+            Rectangle().fill(Theme.line).frame(width: 1, height: 16).padding(.horizontal, 3).padding(.top, 4)
             ForEach(mine) { TagChip(tag: $0) }
             Menu {
                 ForEach(library.tagDirectory.tags) { t in
@@ -153,9 +156,9 @@ struct MeetingView: View {
             HStack(spacing: 18) {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar").font(.system(size: 12)).foregroundStyle(Theme.sec)
-                    Text(detail.meta.event.map { "\($0.title), \(TitleView.time($0.start))" } ?? "Без события")
+                    Text(detail.meta.event.map { "\($0.title), \(TitleView.time($0.start))" } ?? String(localized: "Без события"))
                         .font(.system(size: 13)).foregroundStyle(Theme.sec).lineLimit(1)
-                    LinkButton("Изменить") { rebindOpen.toggle() }
+                    LinkButton(String(localized: "Изменить")) { rebindOpen.toggle() }
                         .popover(isPresented: $rebindOpen, arrowEdge: .bottom) { rebindPopover }
                 }
                 HStack(spacing: 8) {
@@ -163,6 +166,9 @@ struct MeetingView: View {
                         ForEach(Array(detail.people.prefix(5).enumerated()), id: \.offset) { _, n in Avatar(name: n) }
                     }
                     Text(Self.peopleCount(detail.people.count)).font(.system(size: 13)).foregroundStyle(Theme.sec)
+                }
+                if let code = detail.transcript?.language {
+                    languageMenu(code)
                 }
             }
 
@@ -180,6 +186,49 @@ struct MeetingView: View {
         }
     }
 
+    /// Язык встречи; из меню — распознать заново на другом.
+    private func languageMenu(_ code: String) -> some View {
+        let m = detail.meta
+        let detected = (m.language ?? library.controller.settings.language) == MeetingLanguage.auto
+        let canRedo = m.audioDeletedAt == nil && ProcessingStage.of(m, controller: library.controller) == nil
+        return Menu {
+            Section("Распознать заново") {
+                Button("На русском") { retranscribeTo = "ru" }
+                Button("На английском") { retranscribeTo = "en" }
+                Button("С автоопределением языка") { retranscribeTo = MeetingLanguage.auto }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "globe").font(.system(size: 12))
+                Text(detected ? String(localized: "\(MeetingLanguage.uiTitle(code)) · определён автоматически") : MeetingLanguage.uiTitle(code))
+            }
+            .font(.system(size: 13)).foregroundStyle(Theme.sec)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(canRedo ? .visible : .hidden)
+        .fixedSize()
+        .disabled(!canRedo)
+        .help(m.audioDeletedAt != nil ? "Аудио удалено — распознать заново нельзя" : "Язык встречи")
+        .alert(retranscribeTitle,
+               isPresented: Binding(get: { retranscribeTo != nil }, set: { if !$0 { retranscribeTo = nil } })) {
+            Button("Отмена", role: .cancel) { retranscribeTo = nil }
+            Button("Распознать") {
+                if let l = retranscribeTo { library.retranscribe(m.id, language: l) }
+                retranscribeTo = nil
+            }
+        } message: {
+            Text("Транскрипт, саммари и задачи соберутся заново — это распознавание и вызовы Claude. Имена спикеров подтянутся по голосу, если он запомнен. Мои заметки останутся.")
+        }
+    }
+
+    private var retranscribeTitle: String {
+        guard let l = retranscribeTo else { return String(localized: "Распознать запись заново?") }
+        if l == MeetingLanguage.auto { return String(localized: "Распознать запись заново с автоопределением?") }
+        return MeetingLanguage.name(l) == "русский"
+            ? String(localized: "Распознать запись заново на русском?")
+            : String(localized: "Распознать запись заново на английском?")
+    }
+
     private var rebindPopover: some View {
         let start = detail.meta.startedAt
         let end = detail.meta.endedAt ?? start.addingTimeInterval(3600)
@@ -192,7 +241,7 @@ struct MeetingView: View {
             if events.isEmpty {
                 Text("Нет событий в это время").font(.system(size: 13)).foregroundStyle(Theme.sec).padding(10)
             }
-            eventRow(title: "Без события", time: nil, on: detail.meta.event == nil) { rebind(nil) }
+            eventRow(title: String(localized: "Без события"), time: nil, on: detail.meta.event == nil) { rebind(nil) }
         }
         .padding(12)
         .frame(width: 320)
@@ -219,7 +268,7 @@ struct MeetingView: View {
             ForEach(LibraryModel.Tab.allCases) { t in
                 Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { library.tab = t } } label: {
                     VStack(spacing: 8) {
-                        Text(t.rawValue)
+                        Text(t.title)
                             .font(.system(size: 14, weight: library.tab == t ? .semibold : .regular))
                             .foregroundStyle(library.tab == t ? Theme.ink : Theme.sec)
                         ZStack {
@@ -291,8 +340,13 @@ struct MeetingView: View {
 
     /// Саммари целиком, как на вкладке: коротко, решения, задачи, темы, инсайты, участники.
     private func copySummary() {
-        guard let a = detail.analysis, let t = detail.transcript else { return }
-        let text = PersonalSummary.render(a, meta: detail.meta, transcript: t, forCopy: true)
+        let text: String
+        if let styled = detail.styledSummary {
+            text = "# \(detail.meta.title)\n\n\(styled)\n"
+        } else {
+            guard let a = detail.analysis, let t = detail.transcript else { return }
+            text = PersonalSummary.render(a, meta: detail.meta, transcript: t, forCopy: true)
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copiedSummary = true
@@ -311,10 +365,10 @@ struct MeetingView: View {
 
     private func deleteMeeting() {
         let alert = NSAlert()
-        alert.messageText = "Удалить «\(detail.meta.title)»?"
-        alert.informativeText = "Папка с аудио, транскриптом и саммари переместится в Корзину."
-        alert.addButton(withTitle: "Удалить")
-        alert.addButton(withTitle: "Отмена")
+        alert.messageText = String(localized: "Удалить «\(detail.meta.title)»?")
+        alert.informativeText = String(localized: "Папка с аудио, транскриптом и саммари переместится в Корзину.")
+        alert.addButton(withTitle: String(localized: "Удалить"))
+        alert.addButton(withTitle: String(localized: "Отмена"))
         alert.buttons.first?.hasDestructiveAction = true
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         library.player.unload()
@@ -327,10 +381,7 @@ struct MeetingView: View {
     }
 
     static func peopleCount(_ n: Int) -> String {
-        let mod10 = n % 10, mod100 = n % 100
-        let word = mod10 == 1 && mod100 != 11 ? "участник"
-            : (2...4).contains(mod10) && !(12...14).contains(mod100) ? "участника" : "участников"
-        return "\(n) \(word)"
+        plural(n, ru: ("участник", "участника", "участников"), en: ("participant", "participants"))
     }
 }
 

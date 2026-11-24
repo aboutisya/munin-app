@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "Munin";
+"CFBundleName" = "Munin";
+"NSAudioCaptureUsageDescription" = "Munin records the voices of other participants from Zoom, your browser and other apps. The screen is not recorded; the recording stays on this Mac.";
+"NSCalendarsFullAccessUsageDescription" = "Munin reads the meeting title, time and participants from your calendar to label the recording. The calendar is not changed.";
+"NSMicrophoneUsageDescription" = "Munin records your voice in meetings as a separate “Me” track. The recording stays on this Mac.";

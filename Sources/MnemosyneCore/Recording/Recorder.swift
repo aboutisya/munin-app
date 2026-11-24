@@ -97,7 +97,7 @@ public final class Recorder {
         }
     }
 
-    public func start(event: CalendarEventInfo? = nil, title: String? = nil) async {
+    public func start(event: CalendarEventInfo? = nil, title: String? = nil, project: UUID? = nil) async {
         guard phase == .idle else { return }
         lastError = nil
         offlineSuggested = false
@@ -114,6 +114,7 @@ public final class Recorder {
         meta.outputKindAtStart = devices.outputKind
         meta.event = event
         meta.participants = event?.participants
+        meta.project = project
         let folder: URL
         do {
             folder = try store.create(meta)
