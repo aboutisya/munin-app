@@ -79,28 +79,89 @@ public struct WhisperRunner: Sendable {
         process.standardError = err
 
         let tail = TailBuffer()
+        // Читаем через readabilityHandler (очередь GCD), а не `bytes.lines`: AsyncBytes делает
+        // блокирующий read на общем пуле Swift Concurrency, и чтение stdout могло не запуститься —
+        // буфер пайпа (64 КБ) заполнялся, Whisper вставал на записи, прогресс висел на 0%.
+        let stdoutLines = LineSplitter { line in
+            if let s = WhisperOutput.progressSeconds(fromLine: line) { progress(s) }
+        }
+        let stderrLines = LineSplitter { tail.append($0) }
+        out.fileHandleForReading.readabilityHandler = { h in stdoutLines.feed(h.availableData) }
+        err.fileHandleForReading.readabilityHandler = { h in stderrLines.feed(h.availableData) }
+
+        let exited = ExitSignal()
+        process.terminationHandler = { _ in exited.fire() }
         try process.run()
         ChildProcesses.add(process)
         defer { ChildProcesses.remove(process) }
-
-        // Читаем stdout построчно ради прогресса, stderr — ради текста ошибки.
-        async let reading: Void = {
-            for try await line in out.fileHandleForReading.bytes.lines {
-                if let s = WhisperOutput.progressSeconds(fromLine: line) { progress(s) }
-            }
-        }()
-        async let errors: Void = {
-            for try await line in err.fileHandleForReading.bytes.lines { tail.append(line) }
-        }()
-        _ = try? await (reading, errors)
-
-        // Пайпы закрыты — процесс завершается; дожидаемся кода выхода вне главного потока.
-        nonisolated(unsafe) let p = process
-        await Task.detached { p.waitUntilExit() }.value
+        await exited.wait()
+        out.fileHandleForReading.readabilityHandler = nil
+        err.fileHandleForReading.readabilityHandler = nil
+        // Хвост, который пришёл между последним вызовом обработчика и выходом процесса.
+        stdoutLines.feed((try? out.fileHandleForReading.readToEnd()) ?? Data())
+        stderrLines.feed((try? err.fileHandleForReading.readToEnd()) ?? Data())
+        stdoutLines.flush()
+        stderrLines.flush()
         guard process.terminationStatus == 0 else {
             throw PipelineError.whisperFailed(code: process.terminationStatus, tail: tail.text)
         }
         return outputDir.appending(path: wav.deletingPathExtension().lastPathComponent + ".json")
+    }
+}
+
+/// Сигнал о выходе процесса: `fire` может прийти раньше, чем начали ждать.
+final class ExitSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func fire() {
+        let w: CheckedContinuation<Void, Never>? = lock.withLock {
+            fired = true
+            defer { waiter = nil }
+            return waiter
+        }
+        w?.resume()
+    }
+
+    func wait() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let now: Bool = lock.withLock {
+                if fired { return true }
+                waiter = c
+                return false
+            }
+            if now { c.resume() }
+        }
+    }
+}
+
+/// Режет поток байтов на строки и отдаёт их по одной. Вызывается с очереди пайпа.
+final class LineSplitter: @unchecked Sendable {
+    private var buffer = Data()
+    private let lock = NSLock()
+    private let onLine: (String) -> Void
+
+    init(_ onLine: @escaping (String) -> Void) { self.onLine = onLine }
+
+    func feed(_ data: Data) {
+        guard !data.isEmpty else { return }
+        let lines: [String] = lock.withLock {
+            buffer.append(data)
+            var result: [String] = []
+            while let nl = buffer.firstIndex(where: { $0 == 0x0A || $0 == 0x0D }) {
+                let line = buffer[buffer.startIndex..<nl]
+                buffer.removeSubrange(buffer.startIndex...nl)
+                if !line.isEmpty { result.append(String(decoding: line, as: UTF8.self)) }
+            }
+            return result
+        }
+        lines.forEach(onLine)
+    }
+
+    func flush() {
+        let rest: Data = lock.withLock { defer { buffer.removeAll() }; return buffer }
+        if !rest.isEmpty { onLine(String(decoding: rest, as: UTF8.self)) }
     }
 }
 
