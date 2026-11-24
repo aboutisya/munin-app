@@ -33,7 +33,10 @@ struct MainView: View {
             .background(Theme.win)
         }
         .ignoresSafeArea()
-        .overlay(alignment: .topLeading) { sidebarToggle }
+        .overlay(alignment: .topLeading) {
+            // Скрытая панель: »» сразу за светофором. Открытая — «« в шапке панели, рядом с настройками.
+            if sidebarHidden { sidebarToggle }
+        }
         .background(Button("") { library.controller.showSettings() }.keyboardShortcut(",").opacity(0))
         .background(Button("") { toggleSidebar() }.keyboardShortcut("s", modifiers: [.control, .command]).opacity(0))
         .foregroundStyle(Theme.ink)
@@ -41,16 +44,8 @@ struct MainView: View {
     }
 
 
-    /// Кнопка справа от светофора, на одном месте при открытой и скрытой панели.
     private var sidebarToggle: some View {
-        Button(action: toggleSidebar) {
-            Image(systemName: "sidebar.left").font(.system(size: 14)).foregroundStyle(Theme.sec)
-                .frame(width: 28, height: 24).contentShape(Rectangle())
-                .hoverHighlight(radius: 6)
-        }
-        .buttonStyle(.plain)
-        .help(sidebarHidden ? "Показать боковую панель (⌃⌘S)" : "Скрыть боковую панель (⌃⌘S)")
-        .accessibilityLabel(sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель")
+        SidebarToggle(hidden: true, action: toggleSidebar)
         .padding(.leading, 76).padding(.top, 2)
         // Оверлей иначе встаёт под заголовком окна, а кнопка должна быть в одну линию со светофором.
         .ignoresSafeArea()
@@ -61,10 +56,29 @@ struct MainView: View {
     }
 }
 
+/// Кнопка боковой панели: «« скрыть, »» показать.
+struct SidebarToggle: View {
+    let hidden: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: hidden ? "chevron.right.2" : "chevron.left.2")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.sec)
+                .frame(width: 26, height: 26).contentShape(Rectangle())
+                .hoverHighlight(radius: 6)
+        }
+        .buttonStyle(.plain)
+        .help(hidden ? "Показать боковую панель (⌃⌘S)" : "Скрыть боковую панель (⌃⌘S)")
+        .accessibilityLabel(hidden ? "Показать боковую панель" : "Скрыть боковую панель")
+    }
+}
+
 // MARK: - Боковая панель
 
 struct Sidebar: View {
     @Bindable var library: LibraryModel
+    @AppStorage("sidebarHidden") private var sidebarHidden = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -82,6 +96,9 @@ struct Sidebar: View {
                 .buttonStyle(.plain)
                 .help("Настройки (⌘,)")
                 .accessibilityLabel("Настройки")
+                SidebarToggle(hidden: false) {
+                    withAnimation(.easeOut(duration: 0.2)) { sidebarHidden = true }
+                }
             }
             .padding(.leading, 10).padding(.trailing, 4).padding(.bottom, 14)
             nav(String(localized: "Встречи"), .meetings, count: nil)
