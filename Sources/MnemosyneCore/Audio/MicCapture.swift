@@ -91,8 +91,24 @@ public final class MicCapture: @unchecked Sendable {
             if engine.inputNode.isVoiceProcessingEnabled {
                 try? engine.inputNode.setVoiceProcessingEnabled(false)
             }
+            Self.retire(engine)
         }
         engine = nil
+    }
+
+    /// Остановленные движки, которые ещё нельзя освобождать.
+    nonisolated(unsafe) private static var retired: [AVAudioEngine] = []
+    private static let retiredLock = NSLock()
+
+    /// Держим движок ещё несколько секунд после остановки. Остановка и выключение VP
+    /// запускают перенастройку внутри AVAudioEngine на его собственной очереди
+    /// (`IOUnitConfigurationChanged`). Если освободить движок сразу, она пишет
+    /// в освобождённую память: так «Мунин» падал в первые секунды записи.
+    private static func retire(_ engine: AVAudioEngine) {
+        retiredLock.withLock { retired.append(engine) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            retiredLock.withLock { retired.removeAll { $0 === engine } }
+        }
     }
 
     private func startEngine(_ config: Config, setDevice: Bool) throws {

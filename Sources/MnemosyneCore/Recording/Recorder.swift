@@ -70,7 +70,14 @@ public final class Recorder {
     public var plannedVoiceProcessing: Bool {
         Self.needsVoiceProcessing(enabled: echoCancellationEnabled, output: devices.outputKind,
                                   mode: phase == .recording ? mode : (modeOverride ?? .online))
+            && !(phase == .recording && micBusyAtStart)
     }
+
+    /// Микрофон при старте записи уже держало другое приложение (звонок).
+    /// Тогда эхоподавление Apple на эту запись не включаем: VPIO рядом с чужим
+    /// эхоподавлением падает внутри AudioDSP (повреждение памяти при перенастройке устройства).
+    /// У приложения звонка своё эхоподавление, а эхо из динамиков убирает сведение дорожек.
+    private var micBusyAtStart = false
 
     // MARK: - Политика (чистые функции, покрыты тестами)
 
@@ -123,6 +130,9 @@ public final class Recorder {
             return
         }
 
+        // До tap и своего микрофона: потом устройство «занято» и нами самими.
+        micBusyAtStart = (plannedMic ?? AudioDevices.defaultInput()).map { AudioDevices.isRunningSomewhere($0.id) } ?? false
+
         // Сначала tap: создание aggregate device меняет список устройств,
         // и запущенный раньше микрофон получил бы лишнюю смену конфигурации.
         if mode != .offline {
@@ -148,7 +158,12 @@ public final class Recorder {
             mic.resetVoiceProcessingFailure()
             let me = try TrackWriter(url: folder.appending(path: "audio_me.caf"))
             meWriter = me
-            let config = MicCapture.Config(device: plannedMic, voiceProcessing: plannedVoiceProcessing)
+            let wantsVP = plannedVoiceProcessing
+            let config = MicCapture.Config(device: plannedMic, voiceProcessing: wantsVP && !micBusyAtStart)
+            if wantsVP && micBusyAtStart {
+                meta.deviceEvents.append(DeviceEvent(at: 0, text: "Микрофон занят другим приложением (звонок), эхоподавление выключено"))
+                Log.audio.info("mic busy elsewhere at start, voice processing skipped")
+            }
             try mic.start(config, writer: me)
             micName = mic.active?.device?.name ?? AudioDevices.defaultInput()?.name
             voiceProcessingActive = mic.active?.voiceProcessing ?? false
@@ -195,6 +210,7 @@ public final class Recorder {
         tap?.stop()
         tap = nil
         mic.stop()
+        micBusyAtStart = false
         meWriter?.close()
         othersWriter?.close()
 

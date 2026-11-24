@@ -118,6 +118,14 @@ public enum AudioDevices {
         inputs().first { $0.isBuiltIn }
     }
 
+    /// Устройством уже пользуется какой-то процесс — например, приложение звонка держит микрофон.
+    /// Проверять до запуска своего движка: после запуска сюда попадаем и мы сами.
+    public static func isRunningSomewhere(_ id: AudioObjectID) -> Bool {
+        let addr = AudioObject.address(kAudioDevicePropertyDeviceIsRunningSomewhere)
+        guard AudioObject.has(id, addr) else { return false }
+        return ((try? AudioObject.scalar(id, addr, initial: UInt32(0))) ?? 0) != 0
+    }
+
     public static func outputDataSource(_ id: AudioObjectID) -> UInt32? {
         let addr = AudioObject.address(kAudioDevicePropertyDataSource, kAudioObjectPropertyScopeOutput)
         guard AudioObject.has(id, addr) else { return nil }
