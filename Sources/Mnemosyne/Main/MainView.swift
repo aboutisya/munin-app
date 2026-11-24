@@ -4,13 +4,18 @@ import SwiftUI
 
 struct MainView: View {
     @Bindable var library: LibraryModel
+    /// Боковая панель скрыта: кнопка у светофора или ⌃⌘S. Запоминается между запусками.
+    @AppStorage("sidebarHidden") private var sidebarHidden = false
 
     var body: some View {
         HStack(spacing: 0) {
-            Sidebar(library: library)
-                .frame(width: 260)
-                .background(Theme.side)
-            Rectangle().fill(Theme.line).frame(width: 1)
+            if !sidebarHidden {
+                Sidebar(library: library)
+                    .frame(width: 260)
+                    .background(Theme.side)
+                    .transition(.move(edge: .leading))
+                Rectangle().fill(Theme.line).frame(width: 1)
+            }
             Group {
                 if library.section == .tasks {
                     TasksView(library: library)
@@ -28,9 +33,31 @@ struct MainView: View {
             .background(Theme.win)
         }
         .ignoresSafeArea()
+        .overlay(alignment: .topLeading) { sidebarToggle }
         .background(Button("") { library.controller.showSettings() }.keyboardShortcut(",").opacity(0))
+        .background(Button("") { toggleSidebar() }.keyboardShortcut("s", modifiers: [.control, .command]).opacity(0))
         .foregroundStyle(Theme.ink)
         .frame(minWidth: 960, minHeight: 600)
+    }
+
+
+    /// Кнопка справа от светофора, на одном месте при открытой и скрытой панели.
+    private var sidebarToggle: some View {
+        Button(action: toggleSidebar) {
+            Image(systemName: "sidebar.left").font(.system(size: 14)).foregroundStyle(Theme.sec)
+                .frame(width: 28, height: 24).contentShape(Rectangle())
+                .hoverHighlight(radius: 6)
+        }
+        .buttonStyle(.plain)
+        .help(sidebarHidden ? "Показать боковую панель (⌃⌘S)" : "Скрыть боковую панель (⌃⌘S)")
+        .accessibilityLabel(sidebarHidden ? "Показать боковую панель" : "Скрыть боковую панель")
+        .padding(.leading, 76).padding(.top, 2)
+        // Оверлей иначе встаёт под заголовком окна, а кнопка должна быть в одну линию со светофором.
+        .ignoresSafeArea()
+    }
+
+    private func toggleSidebar() {
+        withAnimation(.easeOut(duration: 0.2)) { sidebarHidden.toggle() }
     }
 }
 
@@ -182,6 +209,12 @@ struct Sidebar: View {
             .hoverHighlight(selected: selected)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Показать в Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.folder]) }
+            Divider()
+            Button("Удалить встречу…", role: .destructive) { library.confirmDelete(item.id) }
+                .disabled(item.meta.status == .recording)
+        }
     }
 
     /// «14:31 · 44 мин», «Чт · 30 мин», «в очереди», «ошибка анализа».

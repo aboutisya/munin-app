@@ -100,7 +100,7 @@ struct MeetingView: View {
         }
         Toggle("Не анализировать", isOn: Binding(get: { m.skipAnalysis == true }, set: { setSkip($0) }))
         Divider()
-        Button("Удалить встречу…", role: .destructive) { deleteMeeting() }
+        Button("Удалить встречу…", role: .destructive) { library.confirmDelete(detail.meta.id) }
     }
 
     // MARK: - Теги
@@ -264,7 +264,7 @@ struct MeetingView: View {
     // MARK: - Вкладки
 
     private var tabs: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 20) {
             ForEach(LibraryModel.Tab.allCases) { t in
                 Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { library.tab = t } } label: {
                     VStack(spacing: 8) {
@@ -292,6 +292,7 @@ struct MeetingView: View {
         switch library.tab {
         case .summary: SummaryTab(library: library, detail: detail, copied: copiedSummary, copy: copySummaryAnimated)
         case .notes: NotesTab(detail: detail)
+        case .attachments: AttachmentsTab(library: library, detail: detail)
         case .publicText: PublicTab(library: library, detail: detail, copied: $copied, copy: copyPublic)
         case .transcript: TranscriptTab(library: library, detail: detail, proxy: proxy)
         case .diagrams: DiagramsTab(detail: detail)
@@ -361,23 +362,6 @@ struct MeetingView: View {
         NSPasteboard.general.setString(text, forType: .string)
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-    }
-
-    private func deleteMeeting() {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Удалить «\(detail.meta.title)»?")
-        alert.informativeText = String(localized: "Папка с аудио, транскриптом и саммари переместится в Корзину.")
-        alert.addButton(withTitle: String(localized: "Удалить"))
-        alert.addButton(withTitle: String(localized: "Отмена"))
-        alert.buttons.first?.hasDestructiveAction = true
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        library.player.unload()
-        NSWorkspace.shared.recycle([detail.folder]) { _, _ in
-            Task { @MainActor in
-                library.selectedId = nil
-                library.reload()
-            }
-        }
     }
 
     static func peopleCount(_ n: Int) -> String {

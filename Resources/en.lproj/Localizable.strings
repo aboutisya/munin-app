@@ -487,3 +487,22 @@
 "— Оплата в один шаг\n— Павел: статус 3DS, до пт" = "— One-step checkout\n— Pavel: 3DS status, by Fri";
 "⌃⌥⌘R занят другим приложением" = "⌃⌥⌘R is used by another app";
 "⌃⌥⌘R или ворон в строке меню — начать и остановить." = "⌃⌥⌘R or the raven in the menu bar to start and stop.";
+
+/* Вкладка «Приложения» */
+"Приложения" = "Attachments";
+"Выбрать файлы…" = "Choose files…";
+"Приложить" = "Attach";
+"Изображение" = "Image";
+"Копии сохранятся в папке встречи. Видны только вам." = "Copies are saved in the meeting folder. Only you can see them.";
+"Не удалось приложить файлов: %lld" = "Couldn’t attach files: %lld";
+"Не удалось сохранить изображение" = "Couldn’t save the image";
+"Открыть" = "Open";
+"Отпустите, чтобы приложить" = "Drop to attach";
+"Папка" = "Folder";
+"Перетащите сюда скриншоты, документы и другие файлы" = "Drag screenshots, documents, and other files here";
+
+/* Боковая панель */
+"Показать боковую панель" = "Show sidebar";
+"Показать боковую панель (⌃⌘S)" = "Show sidebar (⌃⌘S)";
+"Скрыть боковую панель" = "Hide sidebar";
+"Скрыть боковую панель (⌃⌘S)" = "Hide sidebar (⌃⌘S)";

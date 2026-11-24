@@ -15,7 +15,7 @@ final class LibraryModel {
     }
 
     enum Tab: String, CaseIterable, Identifiable {
-        case summary = "Саммари", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек", notes = "Мои заметки"
+        case summary = "Саммари", publicText = "Публичное", transcript = "Транскрипт", diagrams = "Диаграммы", feedback = "Тональность и фидбек", notes = "Мои заметки", attachments = "Приложения"
         var id: String { rawValue }
         /// Название вкладки в языке интерфейса (`rawValue` — стабильный идентификатор).
         var title: String {
@@ -26,6 +26,7 @@ final class LibraryModel {
             case .diagrams: String(localized: "Диаграммы")
             case .feedback: String(localized: "Тональность и фидбек")
             case .notes: String(localized: "Мои заметки")
+            case .attachments: String(localized: "Приложения")
             }
         }
     }
@@ -165,6 +166,30 @@ final class LibraryModel {
         }
         controller.queue.enqueue(id)
         refresh()
+    }
+
+    /// Спросить и переместить папку встречи в Корзину. Выбор переходит на соседнюю встречу.
+    func confirmDelete(_ id: UUID) {
+        guard let item = items.first(where: { $0.id == id }) else { return }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Удалить «\(item.meta.title)»?")
+        alert.informativeText = String(localized: "Папка с аудио, транскриптом и саммари переместится в Корзину.")
+        alert.addButton(withTitle: String(localized: "Удалить"))
+        alert.addButton(withTitle: String(localized: "Отмена"))
+        alert.buttons.first?.hasDestructiveAction = true
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let visible = groups.flatMap(\.items)
+        let next = visible.firstIndex(where: { $0.id == id }).flatMap { i in
+            visible.indices.contains(i + 1) ? visible[i + 1].id : (i > 0 ? visible[i - 1].id : nil)
+        }
+        if selectedId == id { player.unload() }
+        let folder = store.locate(id: id) ?? item.folder
+        NSWorkspace.shared.recycle([folder]) { _, _ in
+            Task { @MainActor in
+                if self.selectedId == id { self.selectedId = next }
+                self.refresh()
+            }
+        }
     }
 
     func setProject(_ project: UUID?, meeting: UUID) {
