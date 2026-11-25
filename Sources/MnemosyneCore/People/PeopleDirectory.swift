@@ -11,6 +11,13 @@ public struct PeopleDirectory: Codable, Sendable, Equatable {
         /// Эмбеддинги голоса (WeSpeaker, 256 значений) — по одному с каждой встречи.
         public var voices: [[Float]]
         public var isMe: Bool?
+        /// Роль и заметки из карточки человека — для себя, в Claude не уходят.
+        public var role: String?
+        public var notes: String?
+        /// Слепок голоса: файл в `.people/samples/` и откуда он взят («Синк по квотам, 20 нояб.»).
+        /// Лежит отдельно от аудио встреч, поэтому переживает очистку по сроку хранения.
+        public var sample: String?
+        public var sampleSource: String?
 
         public init(id: UUID = UUID(), name: String, email: String? = nil, voices: [[Float]] = [], isMe: Bool? = nil) {
             self.id = id
@@ -75,4 +82,23 @@ public struct PeopleDirectory: Codable, Sendable, Equatable {
     }
 
     public var myVoice: Record? { people.first { $0.isMe == true && !$0.voices.isEmpty } }
+
+    public var me: Record? { people.first { $0.isMe == true } }
+
+    public func person(_ id: UUID) -> Record? { people.first { $0.id == id } }
+
+    public mutating func update(_ id: UUID, _ change: (inout Record) -> Void) {
+        guard let i = people.firstIndex(where: { $0.id == id }) else { return }
+        change(&people[i])
+    }
+
+    public mutating func remove(_ id: UUID) { people.removeAll { $0.id == id } }
+
+    public static func samplesDirectory(root: URL) -> URL {
+        root.appending(path: ".people/samples", directoryHint: .isDirectory)
+    }
+
+    public static func sampleURL(root: URL, file: String) -> URL {
+        samplesDirectory(root: root).appending(path: file)
+    }
 }

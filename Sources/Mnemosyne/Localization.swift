@@ -42,8 +42,10 @@ enum UILanguage: String, CaseIterable {
         let url = Bundle.main.bundleURL
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+        // Обработчик зовётся из фоновой очереди LaunchServices: он не должен наследовать главный актор,
+        // иначе Swift 6 падает на проверке исполнителя. На главный поток переходим сами.
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { @Sendable _, _ in
+            Task { @MainActor in NSApp.terminate(nil) }
         }
     }
 }

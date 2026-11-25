@@ -128,6 +128,8 @@ public struct MeetingMeta: Codable, Equatable, Sendable {
     public var publicHash: String?
     /// Отмеченные выполненными задачи из анализа (по тексту задачи).
     public var doneTasks: [String]?
+    /// Правки задач из анализа: текст, исполнитель, срок или удаление. Ключ — `TaskList.key` исходного текста.
+    public var taskEdits: [String: TaskEdit]?
     /// Когда удалили аудио по сроку хранения.
     public var audioDeletedAt: Date?
     /// Расход по вызовам Claude — для статистики в настройках.

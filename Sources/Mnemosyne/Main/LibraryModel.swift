@@ -31,10 +31,17 @@ final class LibraryModel {
         }
     }
 
-    enum Section { case meetings, tasks }
+    enum Section { case meetings, tasks, people }
 
     private(set) var items: [Item] = []
-    var section: Section = .meetings { didSet { if section == .tasks { loadTasks() } } }
+    var section: Section = .meetings {
+        didSet {
+            if section == .tasks { loadTasks() }
+            if section == .people { loadPeople() }
+        }
+    }
+    /// Сводка для раздела «Люди»; `nil` — ещё не считали.
+    private(set) var people: PeopleOverview?
     private(set) var tasks: [TaskItem] = []
     var query = "" { didSet { runSearch() } }
     private(set) var hits: [SearchIndex.Hit]?
@@ -104,6 +111,7 @@ final class LibraryModel {
         lastSignature = signature
         items = list
         loadTasks()
+        loadPeople()
         if selectedId == nil { selectedId = items.first?.id } else { refreshDetail() }
         let index = self.index, store = self.store
         Task.detached { index?.sync(store: store) }
@@ -184,7 +192,7 @@ final class LibraryModel {
         }
         if selectedId == id { player.unload() }
         let folder = store.locate(id: id) ?? item.folder
-        NSWorkspace.shared.recycle([folder]) { _, _ in
+        NSWorkspace.shared.recycle([folder]) { @Sendable _, _ in
             Task { @MainActor in
                 if self.selectedId == id { self.selectedId = next }
                 self.refresh()
@@ -226,13 +234,183 @@ final class LibraryModel {
             guard let a = editing.analysis(item.folder) else { continue }
             all += TaskList.items(from: a, meta: item.meta, transcript: editing.transcript(item.folder), myName: myName)
         }
+        all += TaskList.items(from: TaskBook.load(root: store.root), myName: myName)
         tasks = TaskList.sorted(all)
     }
 
     func setDone(_ task: TaskItem, _ done: Bool) {
-        _ = try? store.update(id: task.meetingId) { TaskList.setDone(done, key: task.key, in: &$0) }
+        if let id = task.manualId {
+            try? TaskBook.update(root: store.root) { b in
+                if let i = b.tasks.firstIndex(where: { $0.id == id }) { b.tasks[i].done = done }
+            }
+        } else if let mid = task.meetingId {
+            _ = try? store.update(id: mid) { TaskList.setDone(done, key: task.key, in: &$0) }
+            reloadMeta(mid)
+        }
         if let i = tasks.firstIndex(where: { $0.id == task.id }) { tasks[i].done = done }
-        if let i = items.firstIndex(where: { $0.id == task.meetingId }), let m = try? store.read(items[i].folder) { items[i].meta = m }
+    }
+
+    /// Сохранить правку задачи: текст, исполнитель, срок. Пустой текст не сохраняем.
+    func updateTask(_ task: TaskItem, what: String, who: String, due: String) {
+        let w = what.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = who.trimmingCharacters(in: .whitespaces)
+        guard !w.isEmpty, w != task.what || p != task.who || due != task.due else { return }
+        if let id = task.manualId {
+            try? TaskBook.update(root: store.root) { b in
+                guard let i = b.tasks.firstIndex(where: { $0.id == id }) else { return }
+                b.tasks[i].what = w
+                b.tasks[i].who = p
+                b.tasks[i].due = due
+            }
+        } else if let mid = task.meetingId {
+            _ = try? store.update(id: mid) { TaskList.setEdit(TaskEdit(what: w, who: p, due: due), key: task.key, in: &$0) }
+            reloadMeta(mid)
+        }
+        loadTasks()
+    }
+
+    /// Перенести задачу на другой день (перетаскивание в календаре).
+    func moveTask(_ task: TaskItem, to due: String) {
+        updateTask(task, what: task.what, who: task.who, due: due)
+    }
+
+    /// Вернуть задачу из анализа к исходному виду.
+    func revertTask(_ task: TaskItem) {
+        guard let mid = task.meetingId else { return }
+        _ = try? store.update(id: mid) { TaskList.setEdit(nil, key: task.key, in: &$0) }
+        reloadMeta(mid)
+        loadTasks()
+    }
+
+    func deleteTask(_ task: TaskItem) {
+        if let id = task.manualId {
+            try? TaskBook.update(root: store.root) { $0.tasks.removeAll { $0.id == id } }
+        } else if let mid = task.meetingId {
+            _ = try? store.update(id: mid) { TaskList.setEdit(TaskEdit(deleted: true), key: task.key, in: &$0) }
+            reloadMeta(mid)
+        }
+        loadTasks()
+    }
+
+    /// Новая задача без встречи. Пустой текст — ничего не создаём.
+    func addTask(what: String, who: String, due: String) {
+        let w = what.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !w.isEmpty else { return }
+        try? TaskBook.update(root: store.root) {
+            $0.tasks.append(ManualTask(what: w, who: who.trimmingCharacters(in: .whitespaces), due: due))
+        }
+        loadTasks()
+    }
+
+    // MARK: - Люди
+
+    /// Пересчитать сводку по людям: читает транскрипты всех встреч, поэтому в фоне.
+    func loadPeople() {
+        let store = self.store
+        let list = items.map(\.meta)
+        Task.detached(priority: .userInitiated) {
+            let editing = MeetingEditing(store: store)
+            let pairs: [(meta: MeetingMeta, transcript: Transcript?)] = list.map { m in
+                (m, store.locate(id: m.id).flatMap { editing.transcript($0) })
+            }
+            let overview = PeopleIndex.build(pairs, people: PeopleDirectory.load(root: store.root))
+            await MainActor.run { self.people = overview }
+        }
+    }
+
+    /// Неназванных голосов — для счётчика в сайдбаре.
+    var unknownVoices: Int { people?.unknown.count ?? 0 }
+
+    /// Назвать голос на всех его встречах и сохранить слепок человеку, если его ещё нет.
+    func nameVoice(_ voice: PeopleOverview.Unknown, name: String, email: String? = nil) {
+        let editing = self.editing
+        guard let record = try? editing.nameVoice(voice.refs, name: name, email: email) else { return }
+        if record.sample == nil, let ref = voice.refs.max(by: { $0.talkSeconds < $1.talkSeconds }) {
+            let source = Self.sampleSource(ref.meetingTitle, ref.date)
+            Task {
+                try? await editing.makeSample(person: record.id, meeting: ref.meetingId, speaker: ref.speakerId, source: source)
+                self.loadPeople()
+            }
+        }
+        refreshDetail()
+        loadPeople()
+    }
+
+    /// Голос — мой: имя из настроек, голос добавляется к моему отпечатку.
+    func nameVoiceAsMe(_ voice: PeopleOverview.Unknown) {
+        let dir = PeopleDirectory.load(root: store.root)
+        let name = dir.me?.name ?? (controller.settings.myName.isEmpty ? "Я" : controller.settings.myName)
+        nameVoice(voice, name: name)
+    }
+
+    /// Поля карточки человека. `reload: false` — при наборе текста, без пересчёта сводки.
+    func updatePerson(_ id: UUID, reload: Bool = true, _ change: (inout PeopleDirectory.Record) -> Void) {
+        var dir = PeopleDirectory.load(root: store.root)
+        dir.update(id, change)
+        try? dir.save(root: store.root)
+        if reload { loadPeople() }
+    }
+
+    func renamePerson(_ id: UUID, to name: String) {
+        try? editing.renamePerson(id, to: name)
+        refreshDetail()
+        loadPeople()
+    }
+
+    func clearVoice(_ id: UUID) {
+        try? editing.clearVoice(id)
+        loadPeople()
+    }
+
+    func removePerson(_ id: UUID) {
+        var dir = PeopleDirectory.load(root: store.root)
+        if let file = dir.person(id)?.sample {
+            try? FileManager.default.removeItem(at: PeopleDirectory.sampleURL(root: store.root, file: file))
+        }
+        dir.remove(id)
+        try? dir.save(root: store.root)
+        loadPeople()
+    }
+
+    /// Взять слепок с другой встречи: следующая по списку, где человек говорил и аудио ещё есть.
+    /// Возвращает текст ошибки, если подходящей встречи нет.
+    func nextSample(for person: PeopleOverview.Known) async -> String? {
+        let spoken = person.meetings.filter { $0.speakerId != nil && $0.talkSeconds >= 3 }
+        guard !spoken.isEmpty else { return String(localized: "Нет встреч, где человек говорил") }
+        let current = person.record.sampleSource
+        let start = (spoken.firstIndex { Self.sampleSource($0.title, $0.date) == current }).map { $0 + 1 } ?? 0
+        for k in 0..<spoken.count {
+            let m = spoken[(start + k) % spoken.count]
+            do {
+                try await editing.makeSample(person: person.id, meeting: m.id, speaker: m.speakerId!,
+                                             source: Self.sampleSource(m.title, m.date))
+                loadPeople()
+                return nil
+            } catch { continue }
+        }
+        return String(localized: "Аудио этих встреч уже удалено")
+    }
+
+    /// Файл слепка: у человека — сохранённый; у неизвестного голоса — вырезается из аудио встречи.
+    func sampleURL(for person: PeopleDirectory.Record) -> URL? {
+        guard let file = person.sample else { return nil }
+        let url = PeopleDirectory.sampleURL(root: store.root, file: file)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    func sampleURL(for voice: PeopleOverview.Unknown) async -> URL? {
+        for ref in voice.refs.sorted(by: { $0.talkSeconds > $1.talkSeconds }) {
+            if let url = try? await editing.unknownSample(ref) { return url }
+        }
+        return nil
+    }
+
+    static func sampleSource(_ title: String, _ date: Date) -> String {
+        "\(title), " + date.formatted(.dateTime.day().month(.abbreviated).locale(UILanguage.locale))
+    }
+
+    private func reloadMeta(_ id: UUID) {
+        if let i = items.firstIndex(where: { $0.id == id }), let m = try? store.read(items[i].folder) { items[i].meta = m }
     }
 
     var myOpenTasks: Int { tasks.filter { $0.mine && !$0.done }.count }

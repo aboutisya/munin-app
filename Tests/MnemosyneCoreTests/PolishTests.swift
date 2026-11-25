@@ -53,6 +53,38 @@ struct TaskListTests {
         #expect(meta.doneTasks == nil)
     }
 
+    @Test func editsOverrideAndRevert() {
+        var a = base.sample
+        a.actionItems = [.init(what: "Сверить квоты", who: "Я", due: "2026-11-24", dueSaid: "завтра", ts: "")]
+        var meta = base.meta
+        let key = TaskList.key("Сверить квоты")
+        TaskList.setDone(true, key: key, in: &meta)
+        TaskList.setEdit(TaskEdit(what: "Сверить квоты с Олегом", who: "Олег", due: "2026-11-27"), key: key, in: &meta)
+        var item = TaskList.items(from: a, meta: meta, transcript: nil, myName: "илья")[0]
+        #expect(item.what == "Сверить квоты с Олегом" && item.who == "Олег" && !item.mine)
+        #expect(item.due == "2026-11-27" && item.dueSaid.isEmpty && item.edited)
+        // Отметка «выполнено» держится за исходный текст, а не за новый.
+        #expect(item.done && item.key == key)
+        TaskList.setEdit(nil, key: key, in: &meta)
+        #expect(meta.taskEdits == nil)
+        item = TaskList.items(from: a, meta: meta, transcript: nil, myName: "илья")[0]
+        #expect(item.what == "Сверить квоты" && item.mine && !item.edited)
+        TaskList.setEdit(TaskEdit(deleted: true), key: key, in: &meta)
+        #expect(TaskList.items(from: a, meta: meta, transcript: nil, myName: "илья").isEmpty)
+    }
+
+    @Test func manualTasksRoundTrip() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "mnemosyne-tasks-\(UUID().uuidString)")
+        #expect(TaskBook.load(root: root).tasks.isEmpty)
+        try TaskBook.update(root: root) {
+            $0.tasks.append(ManualTask(what: "Купить подарок", who: "", due: ""))
+            $0.tasks.append(ManualTask(what: "Позвонить", who: "Илья", due: "2026-11-25"))
+        }
+        let items = TaskList.items(from: TaskBook.load(root: root), myName: "илья")
+        #expect(items.count == 2 && items.allSatisfy { $0.isManual && $0.mine && $0.who == "Я" })
+        #expect(items[0].id != items[1].id)
+    }
+
     @Test func myVoiceReplacesOld() {
         var p = PeopleDirectory()
         p.setMyVoice(name: "Илья", voice: [1, 0])

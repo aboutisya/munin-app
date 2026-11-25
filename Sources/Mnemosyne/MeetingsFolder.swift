@@ -25,7 +25,7 @@ enum MeetingsFolder {
     static func relaunch() {
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { @Sendable _, _ in
             Task { @MainActor in NSApp.terminate(nil) }
         }
     }

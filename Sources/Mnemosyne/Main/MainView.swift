@@ -19,6 +19,8 @@ struct MainView: View {
             Group {
                 if library.section == .tasks {
                     TasksView(library: library)
+                } else if library.section == .people {
+                    PeopleView(library: library)
                 } else if let detail = library.detail {
                     MeetingView(library: library, detail: detail)
                 } else {
@@ -103,6 +105,7 @@ struct Sidebar: View {
             .padding(.leading, 10).padding(.trailing, 4).padding(.bottom, 14)
             nav(String(localized: "Встречи"), .meetings, count: nil)
             nav(String(localized: "Задачи"), .tasks, count: library.myOpenTasks)
+            nav(String(localized: "Люди"), .people, count: library.unknownVoices)
             ProjectsSection(library: library)
 
             HStack(spacing: 6) {

@@ -108,7 +108,7 @@ struct AttachmentsTab: View {
     }
 
     private func remove(_ url: URL) {
-        NSWorkspace.shared.recycle([url]) { _, _ in
+        NSWorkspace.shared.recycle([url]) { @Sendable _, _ in
             Task { @MainActor in reload() }
         }
     }

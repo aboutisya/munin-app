@@ -194,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let meeting = ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_ID"].flatMap(UUID.init(uuidString:))
                 controller.openMain(meeting: meeting, tab: LibraryModel.Tab.allCases.first { "\($0)" == tab })
                 if tab == "tasks" { controller.mainWindow.library.section = .tasks }
+                if tab == "people" { controller.mainWindow.library.section = .people }
             }
             if recovered > 0 { statusBar.notice = String(localized: "Восстановлено прерванных записей: \(recovered)") }
             if !controller.settings.onboardingDone, ProcessInfo.processInfo.environment["MNEMOSYNE_OPEN_MAIN"] == nil {
